@@ -15,7 +15,6 @@ export default async function ClaimsReportPage() {
         supabase
             .from('projects')
             .select('*')
-            .eq('user_id', session.user.id)
             .order('total_value', { ascending: false }),
         supabase
             .from('project_claims')

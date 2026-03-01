@@ -17,6 +17,7 @@ const navItems = [
     { label: 'توزيع الرواتب', href: '/dashboard/salary-distribution', icon: '👥' },
     { label: 'استيراد المصاريف', href: '/dashboard/expenses/import', icon: '📥' },
     { label: 'تقرير شامل', href: '/dashboard/report', icon: '📈' },
+    { label: 'إدارة المستخدمين', href: '/dashboard/admin', icon: '👤' },
 ]
 
 export default function Sidebar() {
