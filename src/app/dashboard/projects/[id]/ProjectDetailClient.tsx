@@ -48,12 +48,19 @@ export default function ProjectDetailClient({ analytics }: Props) {
     }
     const healthLabels = { green: '🟢 جيد', yellow: '🟡 تنبيه', red: '🔴 خطر' }
 
+    // الرواتب الفعلية = كل ما هو مرتبط بـ staffing_id
+    const staffingActual = actualExpenses
+        .filter(a => a.staffing_id)
+        .reduce((sum, a) => sum + a.amount, 0)
+
     const barData = [
-        ...staffingItems.map(s => ({
-            name: s.role_name,
-            budget: s.staff_count * s.monthly_salary * s.duration_months,
-            actual: actualExpenses.filter(a => a.staffing_id === s.id).reduce((sum, a) => sum + a.amount, 0),
-        })),
+        // بند الكوادر والرواتب المجمّع
+        ...(staffingItems.length > 0 ? [{
+            name: 'الكوادر والرواتب',
+            budget: totalStaffingBudget,
+            actual: staffingActual,
+        }] : []),
+        // بنود المصاريف الأخرى
         ...expenseItems.map(e => ({
             name: e.name,
             budget: e.target_amount,
@@ -278,11 +285,15 @@ export default function ProjectDetailClient({ analytics }: Props) {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                             <h3 className="text-gray-900 font-semibold mb-4">الموازنة مقابل الفعلي</h3>
-                            {barData.length > 0 ? <BudgetVsActualChart data={barData} /> : <p className="text-gray-400 text-sm text-center py-12">أضف بنود الموازنة أولاً</p>}
+                            <div style={{ minHeight: Math.max(320, barData.length * 50) }}>
+                                {barData.length > 0 ? <BudgetVsActualChart data={barData} /> : <p className="text-gray-400 text-sm text-center py-12">أضف بنود الموازنة أولاً</p>}
+                            </div>
                         </div>
                         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                             <h3 className="text-gray-900 font-semibold mb-4">توزيع المصاريف الفعلية</h3>
-                            {pieData.length > 0 ? <ExpensePieChart data={pieData} /> : <p className="text-gray-400 text-sm text-center py-12">لا توجد مصاريف فعلية بعد</p>}
+                            <div style={{ minHeight: 260 }}>
+                                {pieData.length > 0 ? <ExpensePieChart data={pieData} /> : <p className="text-gray-400 text-sm text-center py-12">لا توجد مصاريف فعلية بعد</p>}
+                            </div>
                         </div>
                     </div>
 
@@ -621,7 +632,7 @@ export default function ProjectDetailClient({ analytics }: Props) {
                                         {actualExpenses.map(a => {
                                             const linkedStaff = a.staffing_id ? staffingItems.find(s => s.id === a.staffing_id) : null
                                             const linkedExp = a.expense_id ? expenseItems.find(e => e.id === a.expense_id) : null
-                                            const linkedLabel = linkedStaff?.role_name ?? linkedExp?.name ?? null
+                                            const linkedLabel = linkedStaff?.role_name ?? linkedExp?.name ?? a.notes ?? null
                                             return (
                                                 <tr key={a.id} className={`group border-b border-gray-50 hover:bg-gray-50 transition-colors ${selectedAct.includes(a.id) ? 'bg-emerald-50/50' : ''}`}>
                                                     <td className="px-5 py-3 text-center">
@@ -649,7 +660,10 @@ export default function ProjectDetailClient({ analytics }: Props) {
                                                         )}
                                                     </td>
                                                     <td className="px-5 py-3 text-emerald-600 font-semibold">{formatCurrency(a.amount)}</td>
-                                                    <td className="px-5 py-3 text-gray-600">{a.notes ?? '-'}</td>
+                                                    <td className="px-5 py-3 text-gray-600">
+                                                        {/* إظهار الملاحظات فقط إذا لم تُستخدم بالفعل كاسم للبند */}
+                                                        {(!linkedStaff && !linkedExp && a.notes) ? '-' : (a.notes ?? '-')}
+                                                    </td>
                                                     <td className="px-5 py-3 flex justify-center items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <button onClick={() => startEditingAct(a)} className="text-gray-400 hover:text-blue-600 transition-colors" title="تعديل"><Pencil size={16} /></button>
                                                         <button onClick={() => deleteActual(a.id)} className="text-gray-400 hover:text-red-600 transition-colors" title="حذف"><Trash2 size={16} /></button>

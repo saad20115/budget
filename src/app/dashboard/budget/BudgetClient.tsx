@@ -27,6 +27,7 @@ export default function BudgetClient() {
     const supabase = createClient()
     const [groupedExpenses, setGroupedExpenses] = useState<GroupedExpense[]>([])
     const [staffingGroups, setStaffingGroups] = useState<StaffingGroup[]>([])
+    const [salaryActual, setSalaryActual] = useState<number>(0)
     const [loading, setLoading] = useState(true)
     const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null)
     const [activeTab, setActiveTab] = useState<'all' | 'expenses' | 'staffing'>('all')
@@ -94,6 +95,24 @@ export default function BudgetClient() {
 
             setGroupedExpenses(Object.values(grouped).sort((a, b) => b.total_amount - a.total_amount))
             setStaffingGroups(Object.values(staffGrouped).sort((a, b) => b.total_amount - a.total_amount))
+
+            // Fetch actual expenses linked to salary items (staffing_id not null, or budget item named 'رواتب وأجور')
+            const { data: salaryExpensesData } = await supabase
+                .from('actual_expenses')
+                .select('amount, expense_id, project_expenses(name)')
+                .not('staffing_id', 'is', null)
+
+            // Also fetch actual expenses linked to budget items named 'رواتب وأجور'
+            const { data: wagesByName } = await supabase
+                .from('actual_expenses')
+                .select('amount, project_expenses!inner(name)')
+                .eq('project_expenses.name', 'رواتب وأجور')
+
+            const salaryTotal = [
+                ...(salaryExpensesData || []),
+                ...(wagesByName || [])
+            ].reduce((sum, e) => sum + Number(e.amount), 0)
+            setSalaryActual(salaryTotal)
 
         } catch (error: unknown) {
             const err = error as { message?: string }
@@ -394,6 +413,38 @@ export default function BudgetClient() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
+                                    {/* Special salary row */}
+                                    {(activeTab === 'all' || activeTab === 'staffing') && totalStaffingBudget > 0 && (
+                                        <tr className="bg-amber-50/60 border-b border-amber-100">
+                                            <td className="px-5 py-3 text-center">
+                                                <span className="text-gray-300 text-xs">—</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-xs font-bold px-2.5 py-1 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                                                    💰 رواتب وأجور
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 font-bold text-gray-900">رواتب وأجور (الكوادر)</td>
+                                            <td className="px-6 py-4 text-emerald-600 font-semibold" dir="ltr">
+                                                {Number(totalStaffingBudget).toLocaleString(undefined, { maximumFractionDigits: 2 })} ر.س
+                                                {salaryActual > 0 && (
+                                                    <div className="text-xs mt-0.5">
+                                                        <span className="text-gray-500">فعلي: </span>
+                                                        <span className={salaryActual > totalStaffingBudget ? 'text-red-600 font-bold' : 'text-blue-600 font-bold'} dir="ltr">
+                                                            {Number(salaryActual).toLocaleString(undefined, { maximumFractionDigits: 2 })} ر.س
+                                                        </span>
+                                                        <span className={`mr-1 text-[10px] px-1 py-0.5 rounded font-bold ${salaryActual > totalStaffingBudget ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                                            {salaryActual > totalStaffingBudget ? '▲ تجاوز' : '✓ ضمن الموازنة'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-500 text-sm">يشمل جميع الكوادر</td>
+                                            <td className="px-6 py-4 flex gap-2 justify-center">
+                                                <span className="text-gray-400 text-xs text-center">من صفحة توزيع الرواتب</span>
+                                            </td>
+                                        </tr>
+                                    )}
                                     {displayedRows.map((row, i) => {
                                         const isExpense = row.type === 'expense'
                                         const name = isExpense ? (row as GroupedExpense).name : (row as StaffingGroup).role_name

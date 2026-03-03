@@ -267,7 +267,7 @@ export default function ImportClient() {
 
             const projectIds = projects.map(p => p.id)
 
-            // Try to match expense names with actual project_expenses table (across the whole category, might be dupes if distributed, but we can match by name and project id)
+            // Fetch existing budget items for this category
             const { data: existingExpenses, error: eeError } = await supabase
                 .from('project_expenses')
                 .select('id, name, project_id')
@@ -275,13 +275,23 @@ export default function ImportClient() {
 
             if (eeError) throw eeError
 
-            const inserts: { project_id: string, expense_id: string | null, amount: number, expense_date: string, notes: string }[] = []
+            // Fetch staffing items for salary matching
+            const { data: staffingItems } = await supabase
+                .from('project_staffing')
+                .select('id, project_id, role_name')
+                .in('project_id', projectIds)
 
+            // كلمات تدل على بنود الرواتب
+            const SALARY_KEYWORDS = ['رواتب', 'أجور', 'مرتبات']
+            const isSalaryExpense = (name: string) =>
+                SALARY_KEYWORDS.some(k => name.includes(k))
+
+            // Collect unique expense names from file to auto-create missing budget items
+            const parsedRows: { expenseName: string, amount: number, dateStr: string, notes: string }[] = []
             rows.slice(1).forEach((row: unknown) => {
                 const r = row as unknown[]
                 const expenseName = String(r[0] || '').trim()
                 const amount = parseFloat(r[1] as string)
-
                 let dateStr = r[2] as string | number
                 if (typeof dateStr === 'number') {
                     const d = new Date(Math.round((dateStr - 25569) * 86400 * 1000))
@@ -289,30 +299,71 @@ export default function ImportClient() {
                 } else {
                     dateStr = String(dateStr || '')
                 }
-
                 const notes = String(r[3] || '').trim()
+                if (!expenseName || !amount || isNaN(amount) || !dateStr) return
+                parsedRows.push({ expenseName, amount, dateStr, notes })
+            })
 
-                if (!amount || isNaN(amount) || !dateStr) return
+            if (parsedRows.length === 0) throw new Error('لم يتم العثور على بيانات صالحة. الأعمدة (اسم البند، المبلغ، التاريخ، ملاحظات)')
 
+            // Auto-create missing budget items (with target_amount=0) for each project
+            // (نتجاهل بنود الرواتب لأنها ستُربط بـ staffing_id وليس project_expenses)
+            const uniqueNames = [...new Set(parsedRows.map(r => r.expenseName))]
+                .filter(name => !isSalaryExpense(name))
+            const newItemsToCreate: { project_id: string, name: string, target_amount: number }[] = []
+            for (const name of uniqueNames) {
+                for (const p of projects) {
+                    const exists = existingExpenses?.find(e => e.project_id === p.id && e.name.trim() === name)
+                    if (!exists) {
+                        newItemsToCreate.push({ project_id: p.id, name, target_amount: 0 })
+                    }
+                }
+            }
+            let allExpenses = [...(existingExpenses || [])]
+            if (newItemsToCreate.length > 0) {
+                const { data: created, error: createErr } = await supabase
+                    .from('project_expenses')
+                    .insert(newItemsToCreate)
+                    .select('id, name, project_id')
+                if (createErr) throw createErr
+                allExpenses = [...allExpenses, ...(created || [])]
+            }
+
+            const inserts: { project_id: string, expense_id: string | null, staffing_id: string | null, amount: number, expense_date: string, notes: string }[] = []
+
+            parsedRows.forEach(({ expenseName, amount, dateStr, notes }) => {
                 // Prorate the actual amount
                 projects.forEach(p => {
                     const projectShare = Number(p.total_value) / groupTotalValue
                     const proratedAmount = amount * projectShare
 
-                    // Try to find matching target expense ID for this specific project
-                    const matchingExpense = existingExpenses?.find(e => e.project_id === p.id && e.name.trim() === expenseName)
-
-                    inserts.push({
-                        project_id: p.id,
-                        expense_id: matchingExpense ? matchingExpense.id : null,
-                        amount: proratedAmount,
-                        expense_date: dateStr,
-                        notes: notes,
-                    })
+                    if (isSalaryExpense(expenseName)) {
+                        // ربط ببند الكوادر (staffing_id) للمقارنة مع موازنة الرواتب
+                        const matchingStaff = staffingItems?.find(s => s.project_id === p.id) || null
+                        inserts.push({
+                            project_id: p.id,
+                            expense_id: null,
+                            staffing_id: matchingStaff?.id || null,
+                            amount: proratedAmount,
+                            expense_date: dateStr,
+                            notes: expenseName,
+                        })
+                    } else {
+                        // Find matching budget item (including newly created)
+                        const matchingExpense = allExpenses.find(e => e.project_id === p.id && e.name.trim() === expenseName)
+                        inserts.push({
+                            project_id: p.id,
+                            expense_id: matchingExpense ? matchingExpense.id : null,
+                            staffing_id: null,
+                            amount: proratedAmount,
+                            expense_date: dateStr,
+                            notes: notes,
+                        })
+                    }
                 })
             })
 
-            if (inserts.length === 0) throw new Error('لم يتم العثور على بيانات صالحة. الأعمدة (مصدر البند المدخل مسبقاً، المبلغ، التاريخ، ملاحظات)')
+            if (inserts.length === 0) throw new Error('لم يتم العثور على بيانات صالحة. الأعمدة (اسم البند، المبلغ، التاريخ، ملاحظات)')
 
             const { error } = await supabase.from('actual_expenses').insert(inserts)
             if (error) throw error
@@ -357,9 +408,19 @@ export default function ImportClient() {
                 if (error) throw error
                 setMessage({ text: 'تمت إضافة بند الموازنة بنجاح!', type: 'success' })
             } else {
-                // For actual expenses, try to match to an existing target expense
+                // For actual expenses, try to match to an existing target expense; auto-create if missing
                 const { data: existing } = await supabase.from('project_expenses').select('id, name').eq('project_id', quickAddProject)
-                const matchingExpense = existing?.find(exp => exp.name.trim() === quickAddName.trim())
+                let matchingExpense = existing?.find(exp => exp.name.trim() === quickAddName.trim())
+
+                // Auto-create the budget item if it doesn't exist
+                if (!matchingExpense) {
+                    const { data: newItem, error: createErr } = await supabase
+                        .from('project_expenses')
+                        .insert({ project_id: quickAddProject, name: quickAddName.trim(), target_amount: 0 })
+                        .select('id, name')
+                        .single()
+                    if (!createErr && newItem) matchingExpense = newItem
+                }
 
                 const { error } = await supabase.from('actual_expenses').insert({
                     project_id: quickAddProject,
@@ -495,17 +556,21 @@ export default function ImportClient() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-gray-700 font-medium mb-1.5 text-xs md:text-sm">البند المالي <span className="text-red-500">*</span></label>
+                                    <label className="block text-gray-700 font-medium mb-1.5 text-xs md:text-sm flex items-center gap-1.5">
+                                        البند المالي <span className="text-red-500">*</span>
+                                        <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded font-normal">يُقبل بند جديد ✓</span>
+                                    </label>
                                     <input
                                         type="text"
                                         value={quickAddName}
                                         onChange={e => setQuickAddName(e.target.value)}
                                         list="quick-add-names"
                                         required
-                                        placeholder={quickAddType === 'target' ? "اسم البند المستهدف" : "اسم البند لربط الموازنة"}
+                                        placeholder={quickAddType === 'target' ? "اسم البند المستهدف (جديد أو موجود)" : "اسم البند (يُنشأ تلقائياً إن لم يوجد)"}
                                         className="w-full h-10 rounded-lg border border-gray-200 bg-gray-50 text-gray-900 px-3 focus:bg-white focus:border-blue-500 focus:outline-none text-sm transition-colors"
                                     />
                                     <datalist id="quick-add-names">
+                                        <option value="رواتب وأجور" />
                                         {Array.from(new Set(targetExpenses.filter(e => e.project_id === quickAddProject).map(e => e.name))).map((n, i) => (
                                             <option key={i} value={n} />
                                         ))}

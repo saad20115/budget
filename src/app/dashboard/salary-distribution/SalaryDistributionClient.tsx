@@ -43,6 +43,16 @@ export default function SalaryDistributionClient({ projects }: Props) {
     const [councilPct, setCouncilPct] = useState(30)
     const [saving, setSaving] = useState(false)
     const [saveMsg, setSaveMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+    const [excludedProjects, setExcludedProjects] = useState<Set<string>>(new Set())
+
+    function toggleExclude(projectId: string) {
+        setExcludedProjects(prev => {
+            const next = new Set(prev)
+            if (next.has(projectId)) next.delete(projectId)
+            else next.add(projectId)
+            return next
+        })
+    }
 
     // Split projects by category
     const councilProjects = projects.filter(p => p.category === 'المجلس التنسيقي')
@@ -58,8 +68,6 @@ export default function SalaryDistributionClient({ projects }: Props) {
     const councilAmount = totalBudget * (councilPct / 100)
     const projectsAmount = totalBudget * (projectsPct / 100)
 
-    const hajjTotal = hajjProjects.reduce((s, p) => s + Number(p.total_value), 0)
-
     // council sub-distribution (equal among council projects if any, else single line)
     const councilRows = councilProjects.length > 0
         ? councilProjects.map(p => ({
@@ -74,10 +82,15 @@ export default function SalaryDistributionClient({ projects }: Props) {
         }))
         : [{ project: null as unknown as Project, projectValue: 0, ratio: 1, share: councilAmount }]
 
+    // مشاريع الحج مع مراعاة الاستبعاد
+    const activeHajjProjects = hajjProjects.filter(p => !excludedProjects.has(String(p.id)))
+    const activeHajjTotal = activeHajjProjects.reduce((s, p) => s + Number(p.total_value), 0)
+
     const hajjRows = hajjProjects.map(p => {
         const val = Number(p.total_value)
-        const ratio = hajjTotal > 0 ? val / hajjTotal : 0
-        return { project: p, projectValue: val, ratio, share: ratio * projectsAmount }
+        const isExcluded = excludedProjects.has(String(p.id))
+        const ratio = !isExcluded && activeHajjTotal > 0 ? val / activeHajjTotal : 0
+        return { project: p, projectValue: val, ratio, share: ratio * projectsAmount, isExcluded }
     })
 
     // ---- Handlers ----
@@ -99,6 +112,7 @@ export default function SalaryDistributionClient({ projects }: Props) {
         setStaff(DEFAULT_STAFF)
         setCouncilPct(30)
         setSaveMsg(null)
+        setExcludedProjects(new Set())
     }
 
     // ---- Save to DB ----
@@ -453,9 +467,18 @@ export default function SalaryDistributionClient({ projects }: Props) {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
+                            {excludedProjects.size > 0 && (
+                                <div className="mx-4 mt-3 mb-1 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-center gap-2">
+                                    <span>⚠️</span>
+                                    <span>
+                                        {excludedProjects.size} مشروع مستبعد — حصته موزعة على {activeHajjProjects.length} مشروع نشط
+                                    </span>
+                                </div>
+                            )}
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="border-b border-gray-100 text-gray-500 text-xs whitespace-nowrap bg-gray-50/50">
+                                        <th className="text-center px-3 py-3 font-semibold w-10">تضمين</th>
                                         <th className="text-right px-4 py-3 font-semibold">المشروع</th>
                                         <th className="text-left px-4 py-3 font-semibold">قيمة العقد</th>
                                         <th className="text-center px-4 py-3 font-semibold">النسبة</th>
@@ -464,29 +487,61 @@ export default function SalaryDistributionClient({ projects }: Props) {
                                 </thead>
                                 <tbody>
                                     {hajjRows.map((row, i) => (
-                                        <tr key={i} className="border-b border-gray-50 hover:bg-emerald-50/30 transition-colors">
-                                            <td className="px-4 py-3 text-gray-900 font-medium max-w-[150px]">
-                                                <div className="truncate" title={row.project.name}>{row.project.name}</div>
+                                        <tr
+                                            key={i}
+                                            className={`border-b transition-colors ${row.isExcluded
+                                                ? 'bg-gray-50 opacity-50'
+                                                : 'border-gray-50 hover:bg-emerald-50/30'
+                                                }`}
+                                        >
+                                            <td className="px-3 py-3 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!row.isExcluded}
+                                                    onChange={() => toggleExclude(String(row.project.id))}
+                                                    className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                                                    title={row.isExcluded ? 'انقر لتضمين المشروع' : 'انقر لاستبعاد المشروع'}
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3 font-medium max-w-[150px]">
+                                                <div className={`truncate ${row.isExcluded ? 'text-gray-400 line-through' : 'text-gray-900'}`} title={row.project.name}>
+                                                    {row.project.name}
+                                                </div>
                                                 {row.project.client && (
                                                     <div className="text-gray-400 text-xs truncate">{row.project.client}</div>
+                                                )}
+                                                {row.isExcluded && (
+                                                    <span className="text-xs text-amber-600 font-medium">مستبعد</span>
                                                 )}
                                             </td>
                                             <td className="px-4 py-3 text-left text-gray-600" dir="ltr">{fmt(row.projectValue)}</td>
                                             <td className="px-4 py-3 text-center">
-                                                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
-                                                    {(row.ratio * 100).toFixed(2)}%
-                                                </span>
+                                                {row.isExcluded ? (
+                                                    <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full font-bold">—</span>
+                                                ) : (
+                                                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
+                                                        {(row.ratio * 100).toFixed(2)}%
+                                                    </span>
+                                                )}
                                             </td>
-                                            <td className="px-4 py-3 text-left font-bold text-emerald-700" dir="ltr">{fmt(row.share)} ر.س</td>
+                                            <td className="px-4 py-3 text-left font-bold" dir="ltr">
+                                                {row.isExcluded ? (
+                                                    <span className="text-gray-400">0.00 ر.س</span>
+                                                ) : (
+                                                    <span className="text-emerald-700">{fmt(row.share)} ر.س</span>
+                                                )}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot>
                                     <tr className="bg-emerald-50 border-t-2 border-emerald-200">
+                                        <td></td>
                                         <td className="px-4 py-3 font-bold text-emerald-900 text-sm">
-                                            الإجمالي ({hajjProjects.length} مشروع)
+                                            الإجمالي ({activeHajjProjects.length} مشروع نشط
+                                            {excludedProjects.size > 0 && <span className="text-gray-400 font-normal"> / {hajjProjects.length} إجمالي</span>})
                                         </td>
-                                        <td className="px-4 py-3 text-left text-emerald-800 font-bold" dir="ltr">{fmt(hajjTotal)}</td>
+                                        <td className="px-4 py-3 text-left text-emerald-800 font-bold" dir="ltr">{fmt(activeHajjTotal)}</td>
                                         <td className="px-4 py-3 text-center">
                                             <span className="text-xs bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full font-bold">100%</span>
                                         </td>
