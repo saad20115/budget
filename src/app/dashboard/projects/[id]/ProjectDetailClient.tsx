@@ -166,12 +166,17 @@ export default function ProjectDetailClient({ analytics }: Props) {
 
     const saveActual = async () => {
         setLoading(true)
+        // __salary__ = رواتب وأجور إجمالية بدون ربط بكادر محدد
+        const staffingId = actForm.staffing_id === '__salary__' ? null : (actForm.staffing_id || null)
+        const notes = actForm.staffing_id === '__salary__'
+            ? (actForm.notes || 'رواتب وأجور')
+            : (actForm.notes || null)
         const payload = {
-            staffing_id: actForm.staffing_id || null,
+            staffing_id: staffingId,
             expense_id: actForm.expense_id || null,
             amount: parseFloat(actForm.amount),
             expense_date: actForm.expense_date,
-            notes: actForm.notes || null,
+            notes,
         }
         if (editingActId) {
             await supabase.from('actual_expenses').update(payload).eq('id', editingActId)
@@ -567,19 +572,44 @@ export default function ProjectDetailClient({ analytics }: Props) {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                     <div><label className={labelCls}>المبلغ (ر.س)</label><input className={inputCls} title="المبلغ" type="number" value={actForm.amount} onChange={e => setActForm(p => ({ ...p, amount: e.target.value }))} placeholder="0" /></div>
                                     <div><label className={labelCls}>التاريخ</label><input className={inputCls} title="التاريخ" type="date" value={actForm.expense_date} onChange={e => setActForm(p => ({ ...p, expense_date: e.target.value }))} /></div>
-                                    <div>
-                                        <label className={labelCls}>ربط بكادر (اختياري)</label>
-                                        <select title="اختر الكادر" className={inputCls} value={actForm.staffing_id} onChange={e => setActForm(p => ({ ...p, staffing_id: e.target.value, expense_id: '' }))}>
-                                            <option value="">-- بدون --</option>
-                                            {staffingItems.map(s => <option key={s.id} value={s.id}>{s.role_name}</option>)}
+                                    <div className="col-span-full">
+                                        <label className={labelCls}>البند (اختياري)</label>
+                                        <select
+                                            title="اختر البند أو الكادر"
+                                            className={inputCls}
+                                            value={actForm.staffing_id ? `s:${actForm.staffing_id}` : actForm.expense_id ? `e:${actForm.expense_id}` : ''}
+                                            onChange={e => {
+                                                const val = e.target.value
+                                                if (!val) {
+                                                    setActForm(p => ({ ...p, expense_id: '', staffing_id: '' }))
+                                                } else if (val.startsWith('s:')) {
+                                                    setActForm(p => ({ ...p, staffing_id: val.slice(2), expense_id: '', notes: p.notes || 'رواتب وأجور' }))
+                                                } else if (val.startsWith('e:')) {
+                                                    setActForm(p => ({ ...p, expense_id: val.slice(2), staffing_id: '' }))
+                                                }
+                                            }}
+                                        >
+                                            <option value="">-- بدون تصنيف --</option>
+                                            {expenseItems.length > 0 && (
+                                                <optgroup label="بنود الموازنة">
+                                                    {expenseItems.map(e => <option key={e.id} value={`e:${e.id}`}>{e.name}</option>)}
+                                                </optgroup>
+                                            )}
+                                            {staffingItems.length > 0 && (
+                                                <optgroup label="👥 الكوادر والرواتب">
+                                                    <option value="s:__salary__">رواتب وأجور (إجمالي)</option>
+                                                    {staffingItems.map(s => <option key={s.id} value={`s:${s.id}`}>{s.role_name}</option>)}
+                                                </optgroup>
+                                            )}
+                                            {staffingItems.length === 0 && (
+                                                <option value="s:__salary__">👥 رواتب وأجور</option>
+                                            )}
                                         </select>
-                                    </div>
-                                    <div>
-                                        <label className={labelCls}>ربط ببند (اختياري)</label>
-                                        <select title="اختر البند" className={inputCls} value={actForm.expense_id} onChange={e => setActForm(p => ({ ...p, expense_id: e.target.value, staffing_id: '' }))}>
-                                            <option value="">-- بدون --</option>
-                                            {expenseItems.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                        </select>
+                                        {(actForm.staffing_id || actForm.expense_id) && (
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                {actForm.staffing_id ? '🔗 مرتبط ببند الكوادر — سيظهر في مقارنة الرواتب' : '🔗 مرتبط ببند الموازنة — سيظهر في مقارنة البنود'}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="col-span-2"><label className={labelCls}>ملاحظات</label><input className={inputCls} title="الملاحظات" value={actForm.notes} onChange={e => setActForm(p => ({ ...p, notes: e.target.value }))} placeholder="وصف المصروف..." /></div>
                                 </div>

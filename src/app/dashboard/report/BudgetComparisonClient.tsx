@@ -35,6 +35,7 @@ export interface StaffingEntry {
     staff_count: number
     monthly_salary: number
     duration_months: number
+    actualAmount: number
 }
 
 interface MergeGroup {
@@ -70,22 +71,19 @@ export default function BudgetComparisonClient({ rows: initialRows, staffingRow 
     const [msg, setMsg] = useState('')
     const [staffingExpanded, setStaffingExpanded] = useState(false)
 
-    // ─── Merge state ───
-    const [mergeGroups, setMergeGroups] = useState<MergeGroup[]>([])
+    // ─── Merge state (lazy initializer: تحميل من localStorage عند أول تهيئة فقط) ───
+    const [mergeGroups, setMergeGroups] = useState<MergeGroup[]>(() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY)
+            return saved ? (JSON.parse(saved) as MergeGroup[]) : []
+        } catch { return [] }
+    })
     const [mergeMode, setMergeMode] = useState(false)
     const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set())
     const [showMergeDialog, setShowMergeDialog] = useState(false)
     const [mergeNameInput, setMergeNameInput] = useState('')
 
-    // حمّل مجموعات الدمج من localStorage
-    useEffect(() => {
-        try {
-            const saved = localStorage.getItem(STORAGE_KEY)
-            if (saved) setMergeGroups(JSON.parse(saved) as MergeGroup[])
-        } catch { /* ignore */ }
-    }, [])
-
-    // احفظ مجموعات الدمج في localStorage
+    // احفظ مجموعات الدمج في localStorage عند كل تغيير
     useEffect(() => {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(mergeGroups))
@@ -373,18 +371,36 @@ export default function BudgetComparisonClient({ rows: initialRows, staffingRow 
 
                     {staffingExpanded && (
                         <div className="bg-violet-50/20 border-b border-violet-100/50">
+                            {/* Header sub-row */}
+                            <div className="grid grid-cols-12 gap-2 px-8 py-2 text-[10px] font-bold text-gray-400 border-b border-violet-100/50 uppercase tracking-wide">
+                                <div className="col-span-4">المشروع / الدور</div>
+                                <div className="col-span-3">الموازنة (كوادر)</div>
+                                <div className="col-span-3">المصاريف الفعلية</div>
+                                <div className="col-span-2">الانحراف</div>
+                            </div>
                             {staffingRow.entries.map(s => {
                                 const rowBudget = s.staff_count * s.monthly_salary * s.duration_months
+                                const rowVariance = rowBudget - s.actualAmount
                                 return (
-                                    <div key={s.id} className="grid grid-cols-12 gap-2 px-8 py-3 border-b border-violet-100/30 last:border-0 text-xs">
+                                    <div key={s.id} className="grid grid-cols-12 gap-2 px-8 py-3 border-b border-violet-100/30 last:border-0 text-xs hover:bg-violet-50/30 transition-colors">
                                         <div className="col-span-4">
                                             <p className="font-medium text-gray-800">{s.project_name}</p>
                                             <p className="text-gray-400">{s.role_name} · {s.staff_count} × {formatCurrency(s.monthly_salary)} × {s.duration_months}م</p>
                                         </div>
-                                        <div className="col-span-2 flex items-center text-blue-600 font-semibold">{formatCurrency(rowBudget)}</div>
-                                        <div className="col-span-2 flex items-center text-gray-300 text-xs">—</div>
-                                        <div className="col-span-3" />
-                                        <div className="col-span-1" />
+                                        <div className="col-span-3 flex items-center text-blue-600 font-semibold">{formatCurrency(rowBudget)}</div>
+                                        <div className="col-span-3 flex items-center">
+                                            {s.actualAmount > 0
+                                                ? <span className="text-emerald-700 font-semibold">{formatCurrency(s.actualAmount)}</span>
+                                                : <span className="text-gray-300">—</span>
+                                            }
+                                        </div>
+                                        <div className="col-span-2 flex items-center">
+                                            {s.actualAmount > 0 && (
+                                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${rowVariance >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                                                    <span dir="ltr">{rowVariance < 0 ? '-' : '+'}</span> {formatCurrency(Math.abs(rowVariance))}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 )
                             })}

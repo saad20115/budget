@@ -133,7 +133,15 @@ export default async function ReportPage() {
         totalActual: data.totalActual,
     })).sort((a, b) => b.totalBudget - a.totalBudget)
     // Staffing row
-    const staffingActualTotal = actuals?.filter(a => a.staffing_id).reduce((s, a) => s + Number(a.amount), 0) ?? 0
+    // حساب المصاريف الفعلية لكل بند كوادر (staffing_id)
+    const actualByStaffingId: Record<string, number> = {}
+    actuals?.forEach(a => {
+        if (a.staffing_id) {
+            actualByStaffingId[a.staffing_id] = (actualByStaffingId[a.staffing_id] || 0) + Number(a.amount)
+        }
+    })
+    const staffingActualTotal = Object.values(actualByStaffingId).reduce((s, v) => s + v, 0)
+
     const staffingRow = {
         entries: (staffing ?? []).map(s => ({
             id: s.id,
@@ -143,6 +151,7 @@ export default async function ReportPage() {
             staff_count: Number(s.staff_count),
             monthly_salary: Number(s.monthly_salary),
             duration_months: Number(s.duration_months),
+            actualAmount: actualByStaffingId[s.id] || 0,
         })),
         totalBudget: (staffing ?? []).reduce((s, st) => s + Number(st.monthly_salary) * Number(st.staff_count) * Number(st.duration_months), 0),
         totalActual: staffingActualTotal,
