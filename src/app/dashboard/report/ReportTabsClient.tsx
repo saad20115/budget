@@ -30,9 +30,10 @@ interface Props {
         totalBudget: number
         totalActual: number
     }
+    unlinkedActual: number
 }
 
-export default function ReportTabsClient({ tableData, chartData, pieChartData, comparisonRows, staffingRow }: Props) {
+export default function ReportTabsClient({ tableData, chartData, pieChartData, comparisonRows, staffingRow, unlinkedActual }: Props) {
     const [tab, setTab] = useState<'overview' | 'comparison'>('overview')
 
     const tabs = [
@@ -103,6 +104,7 @@ export default function ReportTabsClient({ tableData, chartData, pieChartData, c
                 <BudgetComparisonClient
                     rows={comparisonRows}
                     staffingRow={staffingRow}
+                    unlinkedActual={unlinkedActual}
                 />
             )}
         </div>

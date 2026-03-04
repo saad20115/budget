@@ -56,11 +56,12 @@ interface Props {
         totalBudget: number
         totalActual: number
     }
+    unlinkedActual: number
 }
 
 const STORAGE_KEY = 'budget-merge-groups'
 
-export default function BudgetComparisonClient({ rows: initialRows, staffingRow }: Props) {
+export default function BudgetComparisonClient({ rows: initialRows, staffingRow, unlinkedActual }: Props) {
     const supabase = createClient()
 
     const [rows, setRows] = useState<ComparisonRow[]>(initialRows)
@@ -121,7 +122,8 @@ export default function BudgetComparisonClient({ rows: initialRows, staffingRow 
         rows.reduce((s, r) => s + r.totalBudget, 0) + staffingRow.totalBudget, [rows, staffingRow])
 
     const totalActual = useMemo(() =>
-        rows.reduce((s, r) => s + r.totalActual, 0) + staffingRow.totalActual, [rows, staffingRow])
+        rows.reduce((s, r) => s + r.totalActual, 0) + staffingRow.totalActual + unlinkedActual,
+        [rows, staffingRow, unlinkedActual])
 
     const totalVariance = totalBudget - totalActual
     const totalPct = totalBudget > 0 ? (totalActual / totalBudget) * 100 : 0
@@ -532,6 +534,30 @@ export default function BudgetComparisonClient({ rows: initialRows, staffingRow 
                         </div>
                     )
                 })}
+
+                {/* صف المصاريف غير المصنفة (unlinked) — يُكمل الإجمالي */}
+                {unlinkedActual > 0 && (
+                    <div className="grid grid-cols-12 gap-2 px-5 py-4 border-b border-orange-100 bg-orange-50/40">
+                        {mergeMode && <div className="col-span-1" />}
+                        <div className={`${mergeMode ? 'col-span-3' : 'col-span-4'} flex items-center gap-2`}>
+                            <span className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center text-base shrink-0">❓</span>
+                            <div>
+                                <p className="font-bold text-gray-900 text-sm">مصاريف غير مصنفة</p>
+                                <p className="text-xs text-orange-400">غير مرتبطة ببند أو كادر</p>
+                            </div>
+                        </div>
+                        <div className="col-span-2 flex items-center text-gray-300 text-sm">—</div>
+                        <div className="col-span-2 flex items-center text-orange-600 font-semibold text-sm">
+                            {formatCurrency(unlinkedActual)}
+                        </div>
+                        <div className="col-span-3 flex items-center">
+                            <span className="text-xs text-orange-500 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                                بدون موازنة مقابلة
+                            </span>
+                        </div>
+                        <div className="col-span-2" />
+                    </div>
+                )}
 
                 {/* Progress bar */}
                 <div className="px-5 py-4 bg-gray-50 border-t border-gray-200">

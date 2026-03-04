@@ -132,6 +132,7 @@ export default async function ReportPage() {
         totalBudget: data.entries.reduce((s, e) => s + e.target_amount, 0),
         totalActual: data.totalActual,
     })).sort((a, b) => b.totalBudget - a.totalBudget)
+
     // Staffing row
     // حساب المصاريف الفعلية لكل بند كوادر (staffing_id)
     const actualByStaffingId: Record<string, number> = {}
@@ -140,7 +141,7 @@ export default async function ReportPage() {
             actualByStaffingId[a.staffing_id] = (actualByStaffingId[a.staffing_id] || 0) + Number(a.amount)
         }
     })
-    const staffingActualTotal = Object.values(actualByStaffingId).reduce((s, v) => s + v, 0)
+    const staffingActualTotal = actuals?.filter(a => a.staffing_id).reduce((s, a) => s + Number(a.amount), 0) ?? 0
 
     const staffingRow = {
         entries: (staffing ?? []).map(s => ({
@@ -156,6 +157,12 @@ export default async function ReportPage() {
         totalBudget: (staffing ?? []).reduce((s, st) => s + Number(st.monthly_salary) * Number(st.staff_count) * Number(st.duration_months), 0),
         totalActual: staffingActualTotal,
     }
+
+    // ─── المصاريف غير المصنفة (بدون expense_id ولا staffing_id) ───
+    const grandTotalActual = actuals?.reduce((s, a) => s + Number(a.amount), 0) ?? 0
+    const classifiedActual = (actuals?.filter(a => a.expense_id).reduce((s, a) => s + Number(a.amount), 0) ?? 0)
+        + staffingActualTotal
+    const unlinkedActual = Math.max(0, grandTotalActual - classifiedActual)
 
     return (
         <div className="p-4 md:p-8 space-y-8" dir="rtl">
@@ -225,6 +232,7 @@ export default async function ReportPage() {
                 pieChartData={pieChartData}
                 comparisonRows={comparisonRows}
                 staffingRow={staffingRow}
+                unlinkedActual={unlinkedActual}
             />
         </div>
     )
