@@ -103,6 +103,9 @@ interface PieChartProps {
     data: { name: string; value: number }[]
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CustomPie = Pie as any
+
 export function ExpensePieChart({ data }: PieChartProps) {
     const [activeIndex, setActiveIndex] = useState(0)
     const total = data.reduce((s, d) => s + d.value, 0)
@@ -112,7 +115,7 @@ export function ExpensePieChart({ data }: PieChartProps) {
             {/* الدائرة */}
             <div className="shrink-0">
                 <PieChart width={220} height={220}>
-                    <Pie
+                    <CustomPie
                         activeIndex={activeIndex}
                         activeShape={renderActiveShape}
                         data={data}
@@ -123,10 +126,10 @@ export function ExpensePieChart({ data }: PieChartProps) {
                         dataKey="value"
                         onMouseEnter={(_: unknown, index: number) => setActiveIndex(index)}
                     >
-                        {data.map((_, index) => (
+                        {data.map((_: unknown, index: number) => (
                             <Cell key={index} fill={COLORS[index % COLORS.length]} />
                         ))}
-                    </Pie>
+                    </CustomPie>
                 </PieChart>
             </div>
 

@@ -285,15 +285,11 @@ export default function ProjectDetailClient({ analytics }: Props) {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                             <h3 className="text-gray-900 font-semibold mb-4">الموازنة مقابل الفعلي</h3>
-                            <div style={{ minHeight: Math.max(320, barData.length * 50) }}>
-                                {barData.length > 0 ? <BudgetVsActualChart data={barData} /> : <p className="text-gray-400 text-sm text-center py-12">أضف بنود الموازنة أولاً</p>}
-                            </div>
+                            {barData.length > 0 ? <BudgetVsActualChart data={barData} /> : <p className="text-gray-400 text-sm text-center py-12">أضف بنود الموازنة أولاً</p>}
                         </div>
                         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                             <h3 className="text-gray-900 font-semibold mb-4">توزيع المصاريف الفعلية</h3>
-                            <div style={{ minHeight: 260 }}>
-                                {pieData.length > 0 ? <ExpensePieChart data={pieData} /> : <p className="text-gray-400 text-sm text-center py-12">لا توجد مصاريف فعلية بعد</p>}
-                            </div>
+                            {pieData.length > 0 ? <ExpensePieChart data={pieData} /> : <p className="text-gray-400 text-sm text-center py-12">لا توجد مصاريف فعلية بعد</p>}
                         </div>
                     </div>
 
