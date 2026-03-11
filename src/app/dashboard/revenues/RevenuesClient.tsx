@@ -28,8 +28,9 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
         project_id: initialProjects[0]?.id || '',
         title: '',
         amount: '',
+        paid_amount: '',
         due_date: format(new Date(), 'yyyy-MM-dd'),
-        status: 'Pending' as 'Pending' | 'Invoiced' | 'Paid' | 'Overdue' | 'Sent' | 'NotYetDue',
+        status: 'Pending' as 'Pending' | 'Invoiced' | 'Paid' | 'Overdue' | 'Sent' | 'NotYetDue' | 'PartiallyPaid',
         collection_date: '',
         notes: ''
     })
@@ -79,6 +80,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
             project_id: initialProjects[0]?.id || '',
             title: '',
             amount: '',
+            paid_amount: '',
             due_date: format(new Date(), 'yyyy-MM-dd'),
             status: 'Pending',
             collection_date: '',
@@ -93,6 +95,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
             project_id: claim.project_id,
             title: claim.title,
             amount: claim.amount.toString(),
+            paid_amount: (claim.paid_amount || 0).toString(),
             due_date: claim.due_date,
             status: claim.status,
             collection_date: claim.collection_date || '',
@@ -104,16 +107,15 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
 
     const recalculateProjectPaidAmount = async (projectId: string) => {
         try {
-            // Get all paid claims for the project
-            const { data: paidClaims, error: claimsError } = await supabase
+            // Get all claims for the project (sum paid_amount for all)
+            const { data: allClaims, error: claimsError } = await supabase
                 .from('project_claims')
-                .select('amount')
+                .select('paid_amount')
                 .eq('project_id', projectId)
-                .eq('status', 'Paid')
 
             if (claimsError) throw claimsError
 
-            const totalPaid = paidClaims?.reduce((sum, claim) => sum + Number(claim.amount), 0) || 0
+            const totalPaid = allClaims?.reduce((sum, claim) => sum + Number(claim.paid_amount || 0), 0) || 0
 
             // Update local state (Optimistic)
             setProjects(prev => prev.map(p =>
@@ -134,7 +136,6 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
 
         } catch (error) {
             console.error('Error recalculating paid amount:', error)
-            // Error handling can be silent here as it's a side effect of other actions
         }
     }
 
@@ -147,13 +148,25 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                 throw new Error('يرجى تعبئة جميع الحقول المطلوبة')
             }
 
+            const amount = parseFloat(formData.amount)
+            const paidAmt = parseFloat(formData.paid_amount) || 0
+
+            // Auto-determine status based on paid_amount
+            let status = formData.status
+            if (paidAmt >= amount && amount > 0) {
+                status = 'Paid'
+            } else if (paidAmt > 0 && paidAmt < amount) {
+                status = 'PartiallyPaid'
+            }
+
             const claimData = {
                 project_id: formData.project_id,
                 title: formData.title,
-                amount: parseFloat(formData.amount),
+                amount: amount,
+                paid_amount: paidAmt,
                 due_date: formData.due_date,
-                status: formData.status,
-                collection_date: formData.status === 'Paid' ? (formData.collection_date || format(new Date(), 'yyyy-MM-dd')) : null,
+                status: status,
+                collection_date: (status === 'Paid' || status === 'PartiallyPaid') ? (formData.collection_date || format(new Date(), 'yyyy-MM-dd')) : null,
                 notes: formData.notes
             }
 
@@ -224,6 +237,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
     const getStatusStyle = (status: string) => {
         switch (status) {
             case 'Paid': return 'bg-green-100 text-green-700 border-green-200'
+            case 'PartiallyPaid': return 'bg-emerald-50 text-emerald-700 border-emerald-200'
             case 'Pending': return 'bg-yellow-100 text-yellow-700 border-yellow-200'
             case 'Invoiced': return 'bg-blue-100 text-blue-700 border-blue-200'
             case 'Overdue': return 'bg-red-100 text-red-700 border-red-200'
@@ -246,6 +260,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
     const getStatusLabel = (status: string) => {
         switch (status) {
             case 'Paid': return 'مدفوع'
+            case 'PartiallyPaid': return 'مسدد جزئياً'
             case 'Pending': return 'قيد الانتظار'
             case 'Invoiced': return 'مفوتر'
             case 'Overdue': return 'متأخر'
@@ -267,7 +282,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
     const totalProjectsValueBase = projects.reduce((sum, p) => sum + (Number(p.total_value) || 0), 0)
     const totalExpected = totalProjectsValueBase * 1.15 // Adding 15% VAT
 
-    const totalCollected = claims.filter(c => c.status === 'Paid').reduce((sum, c) => sum + c.amount, 0)
+    const totalCollected = claims.reduce((sum, c) => sum + Number(c.paid_amount || 0), 0)
     const totalOverdue = claims.filter(c => c.status === 'Overdue').reduce((sum, c) => sum + c.amount, 0)
     const overallRemaining = totalExpected - totalCollected
 
@@ -332,7 +347,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                                     const baseValue = Number(p.total_value) || 0;
                                     const vatValue = baseValue * 0.15;
                                     const totalValue = baseValue + vatValue;
-                                    const paidAmount = claims.filter(c => c.project_id === p.id && c.status === 'Paid').reduce((sum, c) => sum + Number(c.amount), 0);
+                                    const paidAmount = claims.filter(c => c.project_id === p.id).reduce((sum, c) => sum + Number(c.paid_amount || 0), 0);
                                     const remainingAmount = totalValue - paidAmount;
 
                                     return (
@@ -378,6 +393,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                     >
                         <option value="all">جميع الحالات</option>
                         <option value="Paid">مدفوع</option>
+                        <option value="PartiallyPaid">مسدد جزئياً</option>
                         <option value="Pending">قيد الانتظار</option>
                         <option value="Invoiced">مفوتر</option>
                         <option value="Overdue">متأخر</option>
@@ -402,6 +418,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                                 <th className="px-6 py-4 font-semibold">المشروع</th>
                                 <th className="px-6 py-4 font-semibold">عنوان المطالبة</th>
                                 <th className="px-6 py-4 font-semibold">المبلغ</th>
+                                <th className="px-6 py-4 font-semibold text-green-600">المسدد</th>
                                 <th className="px-6 py-4 font-semibold">تاريخ الاستحقاق</th>
                                 <th className="px-6 py-4 font-semibold">الحالة</th>
                                 <th className="px-6 py-4 font-semibold text-center">الإجراءات</th>
@@ -410,13 +427,13 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                         <tbody className="divide-y divide-gray-100">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                                         جاري تحميل البيانات...
                                     </td>
                                 </tr>
                             ) : filteredClaims.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                                         <div className="flex flex-col items-center gap-3">
                                             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
                                                 <AlertCircle className="w-8 h-8 text-gray-400" />
@@ -433,7 +450,24 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                                             {projects.find(p => p.id === claim.project_id)?.name || 'مشروع غير معروف'}
                                         </td>
                                         <td className="px-6 py-4 text-gray-700">{claim.title}</td>
-                                        <td className="px-6 py-4 font-bold text-gray-900">{claim.amount.toLocaleString('en-US')} ر.س</td>
+                                        <td className="px-6 py-4 font-bold text-gray-900">{Number(claim.amount).toLocaleString('en-US')} ر.س</td>
+                                        <td className="px-4 py-4">
+                                            {(() => {
+                                                const paid = Number(claim.paid_amount || 0)
+                                                const total = Number(claim.amount)
+                                                const pct = total > 0 ? Math.min((paid / total) * 100, 100) : 0
+                                                const remaining = total - paid
+                                                return (
+                                                    <div>
+                                                        <span className="font-bold text-green-600 text-sm">{paid.toLocaleString('en-US')}</span>
+                                                        {remaining > 0 && <span className="text-xs text-gray-400 mr-1">({remaining.toLocaleString('en-US')} متبقي)</span>}
+                                                        <div className="w-full h-1.5 bg-gray-200 rounded-full mt-1 overflow-hidden">
+                                                            <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : pct > 0 ? 'bg-emerald-400' : 'bg-gray-200'}`} style={{ width: `${pct}%` }} />
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })()}
+                                        </td>
                                         <td className="px-6 py-4 text-gray-600">{format(new Date(claim.due_date), 'yyyy/MM/dd')}</td>
                                         <td className="px-6 py-4">
                                             <select
@@ -443,6 +477,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                                             >
                                                 <option value="Pending">قيد الانتظار</option>
                                                 <option value="Invoiced">مفوتر</option>
+                                                <option value="PartiallyPaid">مسدد جزئياً</option>
                                                 <option value="Paid">مدفوع</option>
                                                 <option value="Overdue">متأخر</option>
                                                 <option value="Sent">مرسل</option>
@@ -528,6 +563,31 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                                     />
                                 </div>
                                 <div>
+                                    <label className="block text-sm font-medium text-green-700 mb-1">المبلغ المسدد (ر.س)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        max={formData.amount || undefined}
+                                        value={formData.paid_amount}
+                                        onChange={(e) => setFormData({ ...formData, paid_amount: e.target.value })}
+                                        className="w-full px-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-green-50/30"
+                                        placeholder="0"
+                                    />
+                                    {parseFloat(formData.paid_amount) > 0 && parseFloat(formData.amount) > 0 && (
+                                        <p className="text-xs mt-1 text-gray-500">
+                                            {parseFloat(formData.paid_amount) >= parseFloat(formData.amount) ? (
+                                                <span className="text-green-600 font-medium">✅ سيتم تعيين الحالة: مدفوع</span>
+                                            ) : (
+                                                <span className="text-emerald-600 font-medium">⚡ سيتم تعيين الحالة: مسدد جزئياً ({((parseFloat(formData.paid_amount) / parseFloat(formData.amount)) * 100).toFixed(0)}%)</span>
+                                            )}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الاستحقاق</label>
                                     <input
                                         type="date"
@@ -550,13 +610,14 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                                     >
                                         <option value="Pending">قيد الانتظار</option>
                                         <option value="Invoiced">مفوتر</option>
+                                        <option value="PartiallyPaid">مسدد جزئياً</option>
                                         <option value="Paid">مدفوع</option>
                                         <option value="Overdue">متأخر</option>
                                         <option value="Sent">مرسل</option>
                                         <option value="NotYetDue">لم تستحق</option>
                                     </select>
                                 </div>
-                                {formData.status === 'Paid' && (
+                                {(formData.status === 'Paid' || formData.status === 'PartiallyPaid') && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ التحصيل</label>
                                         <input

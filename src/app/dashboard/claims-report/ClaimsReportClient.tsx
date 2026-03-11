@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Project, ProjectClaim } from '@/lib/types'
+import { openPrintWindow } from './ClaimsPrintTemplates'
 
 interface Props {
     projects: Project[]
@@ -150,9 +151,38 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                     <h1 className="text-3xl font-bold text-gray-900 tracking-tight">تقرير المطالبات</h1>
                     <p className="text-gray-500 mt-1 text-sm">عرض تفصيلي لجميع المطالبات مصنفةً حسب المشاريع</p>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl">
-                    <span className="text-xl">📋</span>
-                    <span className="font-semibold text-gray-700">{claims.length}</span> مطالبة إجمالية
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Print Buttons */}
+                    <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+                        <button
+                            onClick={() => openPrintWindow(projects, claims, 'all')}
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                            title="طباعة التقرير الشامل"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
+                            الشامل
+                        </button>
+                        <button
+                            onClick={() => openPrintWindow(projects, claims, 'overdue')}
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+                            title="طباعة المطالبات المتأخرة"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
+                            المتأخرة
+                        </button>
+                        <button
+                            onClick={() => openPrintWindow(projects, claims, 'notYetDue')}
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+                            title="طباعة المطالبات التي لم يحن وقتها"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
+                            لم يحن
+                        </button>
+                    </div>
+                    <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl flex items-center gap-2">
+                        <span className="text-xl">📋</span>
+                        <span className="font-semibold text-gray-700">{claims.length}</span> مطالبة إجمالية
+                    </div>
                 </div>
             </div>
 

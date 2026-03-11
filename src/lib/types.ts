@@ -70,8 +70,9 @@ export interface ProjectClaim {
     project_id: string
     title: string
     amount: number
+    paid_amount: number
     due_date: string
-    status: 'Pending' | 'Invoiced' | 'Paid' | 'Overdue' | 'Sent' | 'NotYetDue'
+    status: 'Pending' | 'Invoiced' | 'Paid' | 'Overdue' | 'Sent' | 'NotYetDue' | 'PartiallyPaid'
     collection_date?: string
     notes?: string
     created_at: string
