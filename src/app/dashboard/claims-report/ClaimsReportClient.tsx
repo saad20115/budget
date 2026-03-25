@@ -11,6 +11,7 @@ interface Props {
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string; dot: string }> = {
     Paid: { label: 'مدفوعة', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+    PartiallyPaid: { label: 'مدفوعة جزئياً', bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', dot: 'bg-teal-500' },
     Pending: { label: 'معلقة', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
     Sent: { label: 'مرسلة', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500' },
     Overdue: { label: 'متأخرة', bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500' },
@@ -108,9 +109,9 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
     const kpis = useMemo(() => {
         const relevantClaims = claims.filter(c => filteredProjects.some(p => p.id === c.project_id))
         const total = relevantClaims.reduce((s, c) => s + Number(c.amount), 0)
-        const paid = relevantClaims.filter(c => c.status === 'Paid').reduce((s, c) => s + Number(c.amount), 0)
-        const pending = relevantClaims.filter(c => ['Pending', 'Sent', 'Invoiced'].includes(c.status)).reduce((s, c) => s + Number(c.amount), 0)
-        const overdue = relevantClaims.filter(c => c.status === 'Overdue').reduce((s, c) => s + Number(c.amount), 0)
+        const paid = relevantClaims.reduce((s, c) => s + Number(c.paid_amount || (c.status === 'Paid' ? c.amount : 0)), 0)
+        const pending = relevantClaims.filter(c => ['Pending', 'Sent', 'Invoiced', 'PartiallyPaid'].includes(c.status)).reduce((s, c) => s + Math.max(0, Number(c.amount) - Number(c.paid_amount || (c.status === 'Paid' ? c.amount : 0))), 0)
+        const overdue = relevantClaims.filter(c => c.status === 'Overdue').reduce((s, c) => s + Math.max(0, Number(c.amount) - Number(c.paid_amount || (c.status === 'Paid' ? c.amount : 0))), 0)
         const collectionRate = total > 0 ? (paid / total) * 100 : 0
         return { total, paid, pending, overdue, collectionRate, count: relevantClaims.length }
     }, [claims, filteredProjects])
@@ -343,7 +344,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                     .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
 
                                 const projectTotal = (claimsByProject[project.id] ?? []).reduce((s, c) => s + Number(c.amount), 0)
-                                const projectPaid = (claimsByProject[project.id] ?? []).filter(c => c.status === 'Paid').reduce((s, c) => s + Number(c.amount), 0)
+                                const projectPaid = (claimsByProject[project.id] ?? []).reduce((s, c) => s + Number(c.paid_amount || (c.status === 'Paid' ? c.amount : 0)), 0)
                                 const collRate = projectTotal > 0 ? (projectPaid / projectTotal) * 100 : 0
 
                                 return (
@@ -374,7 +375,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                         {/* Collected */}
                                         <td className="px-4 py-4 text-center">
                                             <p className="font-bold text-emerald-600 text-sm">{fmt(projectPaid)}</p>
-                                            <p className="text-gray-400 text-xs mt-0.5">{(claimsByProject[project.id] ?? []).filter(c => c.status === 'Paid').length} مطالبة</p>
+                                            <p className="text-gray-400 text-xs mt-0.5">{(claimsByProject[project.id] ?? []).filter(c => c.status === 'Paid' || c.status === 'PartiallyPaid').length} مطالبة تم تحصيلها</p>
                                         </td>
 
                                         {/* Remaining */}
@@ -418,7 +419,17 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                                             <span className="absolute top-2 left-2 text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full border border-red-200 animate-pulse">!</span>
                                                         )}
                                                         <p className="font-semibold text-gray-900 text-xs leading-tight mb-2 pr-1">{claim.title}</p>
-                                                        <p className="text-base font-bold text-gray-900 mb-2" dir="ltr">{fmt(Number(claim.amount))}</p>
+                                                        
+                                                        {claim.status === 'PartiallyPaid' ? (
+                                                            <div className="mb-2" dir="ltr">
+                                                                <p className="text-base font-bold text-gray-900">{fmt(Number(claim.amount))}</p>
+                                                                <p className="text-xs font-semibold text-emerald-600 mt-0.5 text-right" dir="rtl">محصّل: {fmt(Number(claim.paid_amount || 0))}</p>
+                                                                <p className="text-xs font-semibold text-amber-600 text-right" dir="rtl">متبقي: {fmt(Number(claim.amount) - Number(claim.paid_amount || 0))}</p>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-base font-bold text-gray-900 mb-2" dir="ltr">{fmt(Number(claim.amount))}</p>
+                                                        )}
+
                                                         <StatusBadge status={claim.status} />
                                                         <div className="mt-2 space-y-1">
                                                             <div className="flex items-center gap-1 text-[11px] text-gray-500">

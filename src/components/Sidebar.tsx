@@ -14,6 +14,8 @@ const navItems = [
     { label: 'تقرير المطالبات', href: '/dashboard/claims-report', icon: '📑' },
     { label: 'الموازنة الشاملة', href: '/dashboard/budget', icon: '📋' },
     { label: 'المصاريف الفعلية الشاملة', href: '/dashboard/actual-expenses', icon: '💸' },
+    { label: 'المصاريف الفعلية (خارجي)', href: '/dashboard/external-expenses', icon: '🔄' },
+    { label: 'ربط المصاريف', href: '/dashboard/expense-mapping', icon: '🔗' },
     { label: 'توزيع الرواتب', href: '/dashboard/salary-distribution', icon: '👥' },
     { label: 'استيراد المصاريف', href: '/dashboard/expenses/import', icon: '📥' },
     { label: 'تقرير شامل', href: '/dashboard/report', icon: '📈' },

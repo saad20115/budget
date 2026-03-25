@@ -4,14 +4,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 
 interface GroupedActualExpense {
     key: string
     notes: string
+    displayNotes: string
     expense_date: string
     total_amount: number
     count: number
     ids: string[]
+    source: 'manual' | 'synced'
 }
 
 export default function ActualExpensesClient() {
@@ -22,6 +25,7 @@ export default function ActualExpensesClient() {
 
     // Filters
     const [searchQuery, setSearchQuery] = useState('')
+    const [sourceFilter, setSourceFilter] = useState<'all' | 'manual' | 'synced'>('all')
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -54,9 +58,11 @@ export default function ActualExpensesClient() {
                 const notes = (curr.notes || '').trim()
                 const date = curr.expense_date
                 const key = `${date}-${notes}`
+                const isSynced = notes.startsWith('[مزامنة خارجية]')
+                const displayNotes = isSynced ? notes.replace('[مزامنة خارجية] ', '').replace('[مزامنة خارجية]', '') : notes
 
                 if (!acc[key]) {
-                    acc[key] = { key, notes, expense_date: date, total_amount: 0, count: 0, ids: [] }
+                    acc[key] = { key, notes, displayNotes, expense_date: date, total_amount: 0, count: 0, ids: [], source: isSynced ? 'synced' : 'manual' }
                 }
                 acc[key].total_amount += Number(curr.amount)
                 acc[key].count += 1
@@ -82,7 +88,9 @@ export default function ActualExpensesClient() {
     // Filter Logic
     const filteredGroups = groupedExpenses.filter(group => {
         const query = searchQuery.toLowerCase()
-        return group.notes.toLowerCase().includes(query) || group.expense_date.includes(query)
+        const matchesSearch = group.notes.toLowerCase().includes(query) || group.displayNotes.toLowerCase().includes(query) || group.expense_date.includes(query)
+        const matchesSource = sourceFilter === 'all' || group.source === sourceFilter
+        return matchesSearch && matchesSource
     })
 
     const openAddModal = () => {
@@ -202,10 +210,12 @@ export default function ActualExpensesClient() {
     // Calculate KPIs
     const totalTransactions = groupedExpenses.length
     const totalSpent = groupedExpenses.reduce((sum, g) => sum + Number(g.total_amount), 0)
-    const avgTransSize = totalTransactions > 0 ? totalSpent / totalTransactions : 0
+    const manualTotal = groupedExpenses.filter(g => g.source === 'manual').reduce((s, g) => s + g.total_amount, 0)
+    const syncedTotal = groupedExpenses.filter(g => g.source === 'synced').reduce((s, g) => s + g.total_amount, 0)
+    const syncedCount = groupedExpenses.filter(g => g.source === 'synced').length
+    const manualCount = groupedExpenses.filter(g => g.source === 'manual').length
     let latestDate = '-'
     if (groupedExpenses.length > 0) {
-        // Since groupedExpenses is already sorted by date desc
         latestDate = groupedExpenses[0].expense_date
     }
 
@@ -224,33 +234,41 @@ export default function ActualExpensesClient() {
             </div>
 
             {/* KPIs Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 slide-in-bottom">
-                {/* KPI 1 */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-1.5 h-full bg-emerald-500" />
-                    <p className="text-gray-500 text-sm font-medium mb-1">إجمالي الصرف الفعلي</p>
-                    <p className="text-3xl font-bold text-gray-900 tracking-tight">{Number(totalSpent).toLocaleString(undefined, { maximumFractionDigits: 0 })} ر.س</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 slide-in-bottom">
+                <div className="lg:col-span-1 bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-2xl p-5 text-white shadow-lg shadow-emerald-200 relative overflow-hidden">
+                    <div className="absolute -left-4 -bottom-4 w-24 h-24 bg-white/10 rounded-full" />
+                    <p className="text-emerald-100 text-xs font-semibold uppercase mb-1">إجمالي الصرف الفعلي</p>
+                    <p className="text-2xl font-bold tracking-tight">{Number(totalSpent).toLocaleString(undefined, { maximumFractionDigits: 0 })} ر.س</p>
+                    <p className="text-emerald-200 text-xs mt-1">{totalTransactions} عملية</p>
                 </div>
 
-                {/* KPI 2 */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm relative overflow-hidden group">
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-1.5 h-full bg-blue-500" />
-                    <p className="text-gray-500 text-sm font-medium mb-1">عدد الدفعات/العمليات</p>
-                    <p className="text-3xl font-bold text-gray-900 tracking-tight">{totalTransactions}</p>
+                    <p className="text-gray-500 text-sm font-medium mb-1">يدوي ✏️</p>
+                    <p className="text-2xl font-bold text-gray-900">{Number(manualTotal).toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-sm text-gray-400">ر.س</span></p>
+                    <p className="text-blue-600 text-xs mt-1">{manualCount} عملية</p>
                 </div>
 
-                {/* KPI 3 */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-1.5 h-full bg-indigo-500" />
-                    <p className="text-gray-500 text-sm font-medium mb-1">متوسط حجم العملية</p>
-                    <p className="text-3xl font-bold text-gray-900 tracking-tight">{Number(avgTransSize).toLocaleString(undefined, { maximumFractionDigits: 0 })} ر.س</p>
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-1.5 h-full bg-violet-500" />
+                    <p className="text-gray-500 text-sm font-medium mb-1">مزامنة خارجية 🔗</p>
+                    <p className="text-2xl font-bold text-gray-900">{Number(syncedTotal).toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-sm text-gray-400">ر.س</span></p>
+                    <p className="text-violet-600 text-xs mt-1">{syncedCount} بند مزامن</p>
                 </div>
 
-                {/* KPI 4 */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm relative overflow-hidden group">
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
-                    <p className="text-gray-500 text-sm font-medium mb-1">تاريخ أحدث عملية</p>
-                    <p className="text-3xl font-bold text-gray-900 tracking-tight" dir="ltr">{latestDate}</p>
+                    <p className="text-gray-500 text-sm font-medium mb-1">نسبة الخارجي</p>
+                    <p className="text-2xl font-bold text-gray-900">{totalSpent > 0 ? ((syncedTotal / totalSpent) * 100).toFixed(1) : '0'}%</p>
+                    <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-violet-500 rounded-full transition-all duration-700" style={{ width: totalSpent > 0 ? `${(syncedTotal / totalSpent * 100).toFixed(1)}%` : '0%' }} />
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-1.5 h-full bg-gray-400" />
+                    <p className="text-gray-500 text-sm font-medium mb-1">أحدث عملية</p>
+                    <p className="text-xl font-bold text-gray-900" dir="ltr">{latestDate}</p>
                 </div>
             </div>
 
@@ -261,15 +279,30 @@ export default function ActualExpensesClient() {
             )}
 
             <Card className="border-gray-200 shadow-sm overflow-hidden slide-in-bottom">
-                <CardHeader className="bg-gray-50/50 border-b border-gray-100 flex flex-col md:flex-row gap-4 items-center justify-between">
+                <CardHeader className="bg-gray-50/50 border-b border-gray-100 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                     <CardTitle className="text-gray-800 text-lg">سجل المصاريف الفعلية</CardTitle>
-                    <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                    <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto items-center">
+                        <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white text-sm">
+                            {([
+                                { key: 'all', label: `الكل (${totalTransactions})` },
+                                { key: 'manual', label: `يدوي (${manualCount})` },
+                                { key: 'synced', label: `خارجي (${syncedCount})` },
+                            ] as const).map(tab => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setSourceFilter(tab.key)}
+                                    className={`px-3 py-2 font-medium transition-colors ${sourceFilter === tab.key ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
                         <input
                             type="text"
-                            placeholder="بحث في الملاحظات أو التاريخ..."
+                            placeholder="بحث..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="h-10 rounded-lg border border-gray-300 bg-white text-gray-900 px-4 py-1 focus:border-blue-500 focus:outline-none text-sm w-full md:w-80"
+                            className="h-10 rounded-lg border border-gray-300 bg-white text-gray-900 px-4 py-1 focus:border-blue-500 focus:outline-none text-sm w-full md:w-56"
                         />
                     </div>
                 </CardHeader>
@@ -322,16 +355,17 @@ export default function ActualExpensesClient() {
                                                 }}
                                             />
                                         </th>
-                                        <th className="px-6 py-4 font-semibold">تاريخ الصرف</th>
-                                        <th className="px-6 py-4 font-semibold">ملاحظات البند</th>
-                                        <th className="px-6 py-4 font-semibold">المبلغ المُسدد</th>
-                                        <th className="px-6 py-4 font-semibold">عدد المشاريع الموزع عليها</th>
-                                        <th className="px-6 py-4 font-semibold text-center w-32">إجراءات</th>
+                                        <th className="px-5 py-4 font-semibold">المصدر</th>
+                                        <th className="px-5 py-4 font-semibold">تاريخ الصرف</th>
+                                        <th className="px-5 py-4 font-semibold">البند</th>
+                                        <th className="px-5 py-4 font-semibold">المبلغ</th>
+                                        <th className="px-5 py-4 font-semibold">التوزيع</th>
+                                        <th className="px-5 py-4 font-semibold text-center w-28">إجراءات</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {filteredGroups.map((group) => (
-                                        <tr key={group.key} className={`hover:bg-gray-50/50 transition-colors ${selectedGroups.includes(group.key) ? 'bg-emerald-50/50' : ''}`}>
+                                        <tr key={group.key} className={`hover:bg-gray-50/50 transition-colors ${selectedGroups.includes(group.key) ? 'bg-emerald-50/50' : group.source === 'synced' ? 'bg-violet-50/20' : ''}`}>
                                             <td className="px-5 py-3 text-center">
                                                 <input
                                                     type="checkbox"
@@ -344,28 +378,41 @@ export default function ActualExpensesClient() {
                                                     }}
                                                 />
                                             </td>
-                                            <td className="px-6 py-4 text-gray-500 font-medium">
+                                            <td className="px-5 py-3">
+                                                {group.source === 'synced' ? (
+                                                    <span className="text-xs font-bold px-2 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200">🔗 خارجي</span>
+                                                ) : (
+                                                    <span className="text-xs font-bold px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">✏️ يدوي</span>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-3 text-gray-500 font-medium text-sm">
                                                 {group.expense_date}
                                             </td>
-                                            <td className="px-6 py-4 text-gray-900">
-                                                {group.notes || <span className="text-gray-400 italic">بدون ملاحظات</span>}
+                                            <td className="px-5 py-3 text-gray-900 font-medium">
+                                                {group.displayNotes || <span className="text-gray-400 italic">بدون ملاحظات</span>}
                                             </td>
-                                            <td className="px-6 py-4 text-emerald-600 font-semibold dir-ltr text-right">
+                                            <td className="px-5 py-3 text-emerald-600 font-semibold whitespace-nowrap text-sm" dir="ltr">
                                                 {Number(group.total_amount).toLocaleString(undefined, { maximumFractionDigits: 2 })} ر.س
                                             </td>
-                                            <td className="px-6 py-4 text-gray-500">
+                                            <td className="px-5 py-3 text-gray-500 text-sm">
                                                 {group.count} مشروع
                                             </td>
-                                            <td className="px-6 py-4 flex gap-2 justify-center">
-                                                <button
-                                                    onClick={() => openEditModal(group)}
-                                                    className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors"
-                                                    title="تعديل"
-                                                >
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                    </svg>
-                                                </button>
+                                            <td className="px-5 py-3 flex gap-2 justify-center">
+                                                {group.source === 'synced' ? (
+                                                    <Link href="/dashboard/expense-mapping" className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 flex items-center justify-center transition-colors" title="صفحة الربط">
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                                    </Link>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => openEditModal(group)}
+                                                        className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors"
+                                                        title="تعديل"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                        </svg>
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={() => confirmDelete(group.ids)}
                                                     className="w-8 h-8 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors"
