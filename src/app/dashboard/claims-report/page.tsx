@@ -26,12 +26,19 @@ export default async function ClaimsReportPage() {
     
     const today = new Date().toISOString().split('T')[0]
     const claims: ProjectClaim[] = (claimsData ?? []).map(claim => {
-        if (!['Paid', 'PartiallyPaid', 'Overdue'].includes(claim.status) && claim.due_date < today) {
-            return { ...claim, status: 'Overdue' as const }
+        if (claim.status === 'Paid') return claim
+        
+        let newStatus = claim.status
+        if (claim.due_date < today && claim.status !== 'Overdue') {
+            newStatus = 'Overdue'
+        } else if (claim.due_date >= today && claim.status === 'Overdue') {
+            newStatus = (claim.paid_amount || 0) > 0 ? 'PartiallyPaid' : 'Pending'
         }
-        if (claim.status === 'Overdue' && claim.due_date >= today) {
-            return { ...claim, status: 'Pending' as const }
+
+        if (newStatus !== claim.status) {
+            return { ...claim, status: newStatus as any }
         }
+        
         return claim
     })
 
