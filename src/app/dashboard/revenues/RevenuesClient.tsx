@@ -59,14 +59,33 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
 
             // Update statuses to Overdue if due_date passed and not paid
             const today = new Date().toISOString().split('T')[0]
+            const toUpdateIds: { id: string, status: string }[] = []
+
             const updatedData = data.map(claim => {
-                if (claim.status !== 'Paid' && claim.due_date < today) {
+                if (!['Paid', 'PartiallyPaid', 'Overdue'].includes(claim.status) && claim.due_date < today) {
+                    toUpdateIds.push({ id: claim.id, status: 'Overdue' })
                     return { ...claim, status: 'Overdue' as const }
+                }
+                if (claim.status === 'Overdue' && claim.due_date >= today) {
+                    toUpdateIds.push({ id: claim.id, status: 'Pending' })
+                    return { ...claim, status: 'Pending' as const }
                 }
                 return claim
             })
 
+            // Run an optimistic set
             setClaims(updatedData as ProjectClaim[])
+
+            // Background persist
+            if (toUpdateIds.length > 0) {
+                const overdues = toUpdateIds.filter(u => u.status === 'Overdue').map(u => u.id)
+                const pendings = toUpdateIds.filter(u => u.status === 'Pending').map(u => u.id)
+                
+                Promise.all([
+                    overdues.length > 0 ? supabase.from('project_claims').update({ status: 'Overdue' }).in('id', overdues) : Promise.resolve(),
+                    pendings.length > 0 ? supabase.from('project_claims').update({ status: 'Pending' }).in('id', pendings) : Promise.resolve()
+                ]).catch(err => console.error("Auto-sync claims error:", err))
+            }
         } catch (error: any) {
             console.error('Error fetching claims:', error)
             alert(`حدث خطأ أثناء جلب المطالبات: ${error?.message || 'تأكد من إنشاء جدول المطالبات'}`)

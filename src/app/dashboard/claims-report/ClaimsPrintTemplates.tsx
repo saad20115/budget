@@ -12,6 +12,7 @@ const REPORT_TITLES: Record<ReportType, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
     Paid: '✅ مدفوعة',
+    PartiallyPaid: '🔄 جزئياً',
     Pending: '⏳ معلقة',
     Sent: '📤 مرسلة',
     Overdue: '🔴 متأخرة',
@@ -21,6 +22,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
     Paid: { bg: '#d1fae5', text: '#065f46' },
+    PartiallyPaid: { bg: '#ccfbf1', text: '#0f766e' },
     Pending: { bg: '#fef3c7', text: '#92400e' },
     Sent: { bg: '#dbeafe', text: '#1e40af' },
     Overdue: { bg: '#fee2e2', text: '#991b1b' },
@@ -66,9 +68,9 @@ function generatePrintHTML(
 
     // KPIs
     const totalAmount = filteredClaims.reduce((s, c) => s + Number(c.amount), 0)
-    const paidAmount = filteredClaims.filter(c => c.status === 'Paid').reduce((s, c) => s + Number(c.amount), 0)
-    const overdueAmount = filteredClaims.filter(c => c.status === 'Overdue').reduce((s, c) => s + Number(c.amount), 0)
-    const pendingAmount = filteredClaims.filter(c => ['Pending', 'Sent', 'Invoiced'].includes(c.status)).reduce((s, c) => s + Number(c.amount), 0)
+    const paidAmount = filteredClaims.reduce((s, c) => s + Number(c.paid_amount || (c.status === 'Paid' ? c.amount : 0)), 0)
+    const overdueAmount = filteredClaims.filter(c => c.status === 'Overdue').reduce((s, c) => s + Math.max(0, Number(c.amount) - Number(c.paid_amount || (c.status === 'Paid' ? c.amount : 0))), 0)
+    const pendingAmount = filteredClaims.filter(c => ['Pending', 'Sent', 'Invoiced', 'PartiallyPaid'].includes(c.status)).reduce((s, c) => s + Math.max(0, Number(c.amount) - Number(c.paid_amount || (c.status === 'Paid' ? c.amount : 0))), 0)
     const collectionRate = totalAmount > 0 ? ((paidAmount / totalAmount) * 100).toFixed(1) : '0'
 
     // Max claims for column count
@@ -85,7 +87,7 @@ function generatePrintHTML(
             new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
         )
         const projectClaimsTotal = pClaims.reduce((s, c) => s + Number(c.amount), 0)
-        const projectPaid = pClaims.filter(c => c.status === 'Paid').reduce((s, c) => s + Number(c.amount), 0)
+        const projectPaid = pClaims.reduce((s, c) => s + Number(c.paid_amount || (c.status === 'Paid' ? c.amount : 0)), 0)
         const projectRemaining = projectClaimsTotal - projectPaid
         const contractWithVat = Number(p.total_value) * 1.15
         const collRate = projectClaimsTotal > 0 ? ((projectPaid / projectClaimsTotal) * 100).toFixed(0) : '0'
@@ -102,7 +104,10 @@ function generatePrintHTML(
 
             return `<td style="padding:2px 3px;vertical-align:top;background:${bgColor};${bd}">
                 <div style="background:${sc.bg};border-radius:4px;padding:3px 4px;line-height:1.3">
-                    <b style="font-size:10px;color:#1e3a5f;display:block">${fmt(Number(c.amount))}</b>
+                    ${c.status === 'PartiallyPaid' 
+                        ? `<b style="font-size:10px;color:#1e3a5f;display:block;direction:ltr">${fmt(Number(c.amount))}</b><b style="font-size:8px;color:#059669;display:block">م: ${fmt(Number(c.paid_amount || 0))}</b>` 
+                        : `<b style="font-size:10px;color:#1e3a5f;display:block;direction:ltr">${fmt(Number(c.amount))}</b>`
+                    }
                     <span style="font-size:7px;color:${sc.text}">${sl}</span>
                     <span style="font-size:7px;color:#6b7280;display:block">${fmtDate(c.due_date)}</span>${c.notes ? `<span style="font-size:7px;color:#9ca3af;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px" title="${c.notes}">📝${c.notes}</span>` : ''}
                 </div>
