@@ -57,22 +57,30 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
 
             if (error) throw error
 
-            // Update statuses to Overdue if due_date passed and not paid
+            // Update statuses to Overdue or Due if due_date passed and not paid
             const today = new Date().toISOString().split('T')[0]
-            const toUpdateIds: { id: string, status: string }[] = []
+            const toUpdateIds: { id: string, newStatus: string }[] = []
 
             const updatedData = data.map(claim => {
                 if (claim.status === 'Paid') return claim
                 
-                let newStatus = claim.status
-                if (claim.due_date < today && claim.status !== 'Overdue') {
-                    newStatus = 'Overdue'
-                } else if (claim.due_date >= today && claim.status === 'Overdue') {
-                    newStatus = (claim.paid_amount || 0) > 0 ? 'PartiallyPaid' : 'Pending'
+                const dueParts = claim.due_date.split('-');
+                const todayParts = today.split('-');
+                const d1 = new Date(Date.UTC(Number(dueParts[0]), Number(dueParts[1])-1, Number(dueParts[2])));
+                const d2 = new Date(Date.UTC(Number(todayParts[0]), Number(todayParts[1])-1, Number(todayParts[2])));
+                const diffDays = (d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24);
+                
+                let newStatus = claim.status;
+                if (diffDays >= 0 && diffDays <= 5) {
+                    newStatus = 'Due';
+                } else if (diffDays > 5) {
+                    newStatus = 'Overdue';
+                } else if (diffDays < 0 && (claim.status === 'Overdue' || claim.status === 'Due')) {
+                    newStatus = (claim.paid_amount || 0) > 0 ? 'PartiallyPaid' : 'Pending';
                 }
 
                 if (newStatus !== claim.status) {
-                    toUpdateIds.push({ id: claim.id, status: newStatus })
+                    toUpdateIds.push({ id: claim.id, newStatus })
                     return { ...claim, status: newStatus as any }
                 }
                 
@@ -84,13 +92,16 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
 
             // Background persist
             if (toUpdateIds.length > 0) {
-                const overdues = toUpdateIds.filter(u => u.status === 'Overdue').map(u => u.id)
-                const pendings = toUpdateIds.filter(u => u.status === 'Pending').map(u => u.id)
-                
-                Promise.all([
-                    overdues.length > 0 ? supabase.from('project_claims').update({ status: 'Overdue' }).in('id', overdues) : Promise.resolve(),
-                    pendings.length > 0 ? supabase.from('project_claims').update({ status: 'Pending' }).in('id', pendings) : Promise.resolve()
-                ]).catch(err => console.error("Auto-sync claims error:", err))
+                const statusGroups = toUpdateIds.reduce((acc, curr) => {
+                    if (!acc[curr.newStatus]) acc[curr.newStatus] = [];
+                    acc[curr.newStatus].push(curr.id);
+                    return acc;
+                }, {} as Record<string, string[]>);
+
+                const promises = Object.entries(statusGroups).map(([status, ids]) => 
+                    supabase.from('project_claims').update({ status }).in('id', ids)
+                );
+                Promise.all(promises).catch(err => console.error("Auto-sync claims error:", err))
             }
         } catch (error: any) {
             console.error('Error fetching claims:', error)
@@ -261,6 +272,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
 
     const getStatusStyle = (status: string) => {
         switch (status) {
+            case 'Due': return 'bg-orange-100 text-orange-700 border-orange-200'
             case 'Paid': return 'bg-green-100 text-green-700 border-green-200'
             case 'PartiallyPaid': return 'bg-emerald-50 text-emerald-700 border-emerald-200'
             case 'Pending': return 'bg-yellow-100 text-yellow-700 border-yellow-200'
@@ -274,6 +286,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
 
     const getStatusIcon = (status: string) => {
         switch (status) {
+            case 'Due': return <Clock className="w-4 h-4 mr-1 ml-1" />
             case 'Paid': return <CheckCircle className="w-4 h-4 mr-1 ml-1" />
             case 'Pending': return <Clock className="w-4 h-4 mr-1 ml-1" />
             case 'Invoiced': return <Edit2 className="w-4 h-4 mr-1 ml-1" />
@@ -284,6 +297,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
 
     const getStatusLabel = (status: string) => {
         switch (status) {
+            case 'Due': return 'مستحقة'
             case 'Paid': return 'مدفوع'
             case 'PartiallyPaid': return 'مسدد جزئياً'
             case 'Pending': return 'قيد الانتظار'
@@ -505,6 +519,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                                                 <option value="PartiallyPaid">مسدد جزئياً</option>
                                                 <option value="Paid">مدفوع</option>
                                                 <option value="Overdue">متأخر</option>
+                                                <option value="Due">مستحقة</option>
                                                 <option value="Sent">مرسل</option>
                                                 <option value="NotYetDue">لم تستحق</option>
                                             </select>
@@ -638,6 +653,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
                                         <option value="PartiallyPaid">مسدد جزئياً</option>
                                         <option value="Paid">مدفوع</option>
                                         <option value="Overdue">متأخر</option>
+                                        <option value="Due">مستحقة</option>
                                         <option value="Sent">مرسل</option>
                                         <option value="NotYetDue">لم تستحق</option>
                                     </select>

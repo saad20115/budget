@@ -40,20 +40,28 @@ export default function ClaimsCalendarClient({ initialProjects }: ClaimsCalendar
 
             // Update statuses to Overdue if due_date passed and not paid
             const today = new Date().toISOString().split('T')[0]
-            const toUpdateIds: { id: string, status: string }[] = []
+            const toUpdateIds: { id: string, newStatus: string }[] = []
 
             const updatedData = data.map(claim => {
                 if (claim.status === 'Paid') return claim
                 
-                let newStatus = claim.status
-                if (claim.due_date < today && claim.status !== 'Overdue') {
-                    newStatus = 'Overdue'
-                } else if (claim.due_date >= today && claim.status === 'Overdue') {
-                    newStatus = (claim.paid_amount || 0) > 0 ? 'PartiallyPaid' : 'Pending'
+                const dueParts = claim.due_date.split('-');
+                const todayParts = today.split('-');
+                const d1 = new Date(Date.UTC(Number(dueParts[0]), Number(dueParts[1])-1, Number(dueParts[2])));
+                const d2 = new Date(Date.UTC(Number(todayParts[0]), Number(todayParts[1])-1, Number(todayParts[2])));
+                const diffDays = (d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24);
+                
+                let newStatus = claim.status;
+                if (diffDays >= 0 && diffDays <= 5) {
+                    newStatus = 'Due';
+                } else if (diffDays > 5) {
+                    newStatus = 'Overdue';
+                } else if (diffDays < 0 && (claim.status === 'Overdue' || claim.status === 'Due')) {
+                    newStatus = (claim.paid_amount || 0) > 0 ? 'PartiallyPaid' : 'Pending';
                 }
 
                 if (newStatus !== claim.status) {
-                    toUpdateIds.push({ id: claim.id, status: newStatus })
+                    toUpdateIds.push({ id: claim.id, newStatus })
                     return { ...claim, status: newStatus as any }
                 }
                 
@@ -64,13 +72,16 @@ export default function ClaimsCalendarClient({ initialProjects }: ClaimsCalendar
 
             // Background persist
             if (toUpdateIds.length > 0) {
-                const overdues = toUpdateIds.filter(u => u.status === 'Overdue').map(u => u.id)
-                const pendings = toUpdateIds.filter(u => u.status === 'Pending').map(u => u.id)
-                
-                Promise.all([
-                    overdues.length > 0 ? supabase.from('project_claims').update({ status: 'Overdue' }).in('id', overdues) : Promise.resolve(),
-                    pendings.length > 0 ? supabase.from('project_claims').update({ status: 'Pending' }).in('id', pendings) : Promise.resolve()
-                ]).catch(err => console.error("Auto-sync claims error:", err))
+                const statusGroups = toUpdateIds.reduce((acc, curr) => {
+                    if (!acc[curr.newStatus]) acc[curr.newStatus] = [];
+                    acc[curr.newStatus].push(curr.id);
+                    return acc;
+                }, {} as Record<string, string[]>);
+
+                const promises = Object.entries(statusGroups).map(([status, ids]) => 
+                    supabase.from('project_claims').update({ status }).in('id', ids)
+                );
+                Promise.all(promises).catch(err => console.error("Auto-sync claims error:", err))
             }
         } catch (error: any) {
             console.error('Error fetching claims:', error)
@@ -82,6 +93,8 @@ export default function ClaimsCalendarClient({ initialProjects }: ClaimsCalendar
     const getEventColor = (status: string) => {
         switch (status) {
             case 'Paid': return '#10B981' // emerald-500
+            case 'Due': return '#F97316' // orange-500
+            case 'PartiallyPaid': return '#059669' // emerald-600
             case 'Pending': return '#F59E0B' // amber-500
             case 'Invoiced': return '#3B82F6' // blue-500
             case 'Overdue': return '#EF4444' // red-500
@@ -115,14 +128,16 @@ export default function ClaimsCalendarClient({ initialProjects }: ClaimsCalendar
                 </div>
             ) : (
                 <div className="flex flex-col flex-1 min-h-0 min-w-[800px]">
-                    <div className="mb-4 flex gap-4 text-sm bg-gray-50 p-3 rounded-lg border border-gray-100 flex-wrap">
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-emerald-500"></div> مدفوع</div>
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500"></div> مفوتر</div>
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-purple-500"></div> مرسل</div>
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-500"></div> قيد الانتظار</div>
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-gray-500"></div> لم تستحق</div>
-                        <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500"></div> متأخر</div>
-                    </div>
+                        <div className="flex flex-wrap items-center gap-4 mb-4 text-sm bg-gray-50 p-3 rounded-lg border border-gray-100">
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#10B981]"></div> مدفوعة</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#059669]"></div> جزئياً</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#3B82F6]"></div> مفوترة</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#A855F7]"></div> مرسلة</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#F97316]"></div> مستحقة</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#F59E0B]"></div> قيد الانتظار</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#6B7280]"></div> لم تحن</div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#EF4444]"></div> متأخرة</div>
+                        </div>
 
                     <FullCalendar
                         plugins={[dayGridPlugin, interactionPlugin]}
