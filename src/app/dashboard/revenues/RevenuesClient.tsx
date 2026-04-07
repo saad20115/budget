@@ -30,7 +30,7 @@ export default function RevenuesClient({ initialProjects }: RevenuesClientProps)
         amount: '',
         paid_amount: '',
         due_date: format(new Date(), 'yyyy-MM-dd'),
-        status: 'Pending' as 'Pending' | 'Invoiced' | 'Paid' | 'Overdue' | 'Sent' | 'NotYetDue' | 'PartiallyPaid',
+        status: 'Pending' as 'Pending' | 'Invoiced' | 'Paid' | 'Overdue' | 'Sent' | 'NotYetDue' | 'PartiallyPaid' | 'Due',
         collection_date: '',
         notes: ''
     })
