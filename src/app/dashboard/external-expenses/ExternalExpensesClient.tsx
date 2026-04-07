@@ -16,10 +16,9 @@ interface ExternalExpenseRow {
     accountCode: string
     accountName: string
     expenses: number
-    month: number
+    expenseDate: string
     redistributable: boolean
 }
-
 
 type GroupByMode = 'none' | 'costCenter' | 'account' | 'month' | 'company'
 
@@ -61,7 +60,7 @@ export default function ExternalExpensesClient() {
                 .order('company_id')
                 .order('cost_center')
                 .order('account_code')
-                .order('month')
+                .order('expense_date')
 
             if (error) throw error
 
@@ -75,7 +74,7 @@ export default function ExternalExpensesClient() {
                 accountCode: r.account_code,
                 accountName: r.account_name,
                 expenses: Number(r.expenses),
-                month: r.month,
+                expenseDate: r.expense_date,
                 redistributable: r.redistributable !== false,
             })))
             setSelectedIds(new Set())
@@ -157,42 +156,74 @@ export default function ExternalExpensesClient() {
             // Check which rows already exist
             const { data: existing } = await supabase
                 .from('external_expenses_cache')
-                .select('company_id, cost_center, account_code, month')
+                .select('company_id, cost_center, account_code, expense_date')
 
             const existingKeys = new Set(
-                (existing || []).map(r => `${r.company_id}|${r.cost_center}|${r.account_code}|${r.month}`)
+                (existing || []).map(r => `${r.company_id}|${r.cost_center}|${r.account_code}|${r.expense_date}`)
             )
 
-            let updatedCount = 0
-            let newCount = 0
+            // Build upsert data with proper field mapping
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const rawRows: any[] = rows.map((r: any) => {
+                const companyId = r.companyId ?? r.company_id
+                const companyName = r.companyName ?? r.company_name ?? ''
+                const costCenter = r.costCenter ?? r.cost_center ?? ''
+                const groupId = r.groupId ?? r.group_id ?? null
+                const groupName = r.groupName ?? r.group_name ?? null
+                const accountCode = r.accountCode ?? r.account_code ?? ''
+                const accountName = r.accountName ?? r.account_name ?? ''
+                const expenseDate = r.expenseDate ?? r.expense_date ?? r.date ?? new Date().toISOString().split('T')[0]
+                // Use originalExpenses as the per-row expense amount
+                const expenses = Number(r.originalExpenses ?? r.expenses ?? r.totalExpenses ?? 0)
 
-            // Upsert: update expenses if row exists, insert if new
-            const upsertData = rows.map(r => {
-                const key = `${r.companyId}|${r.costCenter}|${r.accountCode}|${r.month}`
-                if (existingKeys.has(key)) { updatedCount++ } else { newCount++ }
                 return {
-                    company_id: r.companyId,
-                    company_name: r.companyName,
-                    cost_center: r.costCenter,
-                    group_id: r.groupId || null,
-                    group_name: r.groupName || null,
-                    account_code: r.accountCode,
-                    account_name: r.accountName,
-                    expenses: r.expenses,
-                    month: r.month || null,
+                    company_id: Number(companyId),
+                    company_name: String(companyName),
+                    cost_center: String(costCenter),
+                    group_id: groupId != null ? Number(groupId) : null,
+                    group_name: groupName != null ? String(groupName) : null,
+                    account_code: String(accountCode),
+                    account_name: String(accountName),
+                    expenses,
+                    expense_date: expenseDate,
                     updated_at: new Date().toISOString(),
                 }
             })
 
-            const { error } = await supabase
-                .from('external_expenses_cache')
-                .upsert(upsertData, { onConflict: 'company_id,cost_center,account_code,month' })
+            // Deduplicate: sum expenses for rows with the same unique key
+            // to avoid "ON CONFLICT DO UPDATE cannot affect row a second time"
+            const deduped = new Map<string, typeof rawRows[0]>()
+            for (const row of rawRows) {
+                const key = `${row.company_id}|${row.cost_center}|${row.account_code}|${row.expense_date}`
+                if (deduped.has(key)) {
+                    deduped.get(key)!.expenses += row.expenses
+                } else {
+                    deduped.set(key, { ...row })
+                }
+            }
+            const upsertData = Array.from(deduped.values())
 
-            if (error) throw error
+            let updatedCount = 0
+            let newCount = 0
+            for (const row of upsertData) {
+                const key = `${row.company_id}|${row.cost_center}|${row.account_code}|${row.expense_date}`
+                if (existingKeys.has(key)) { updatedCount++ } else { newCount++ }
+            }
+
+            // Batch upsert in chunks of 500
+            const CHUNK = 500
+            for (let i = 0; i < upsertData.length; i += CHUNK) {
+                const chunk = upsertData.slice(i, i + CHUNK)
+                const { error } = await supabase
+                    .from('external_expenses_cache')
+                    .upsert(chunk, { onConflict: 'company_id,cost_center,account_code,expense_date' })
+                if (error) throw error
+            }
 
             const parts = []
             if (updatedCount > 0) parts.push(`تحديث ${updatedCount} سجل موجود`)
             if (newCount > 0) parts.push(`إضافة ${newCount} سجل جديد`)
+            if (rawRows.length !== upsertData.length) parts.push(`(تم دمج ${rawRows.length - upsertData.length} سجل مكرر)`)
 
             setMessage({ text: `✅ ${parts.join(' + ')} — الربط مع المشاريع محفوظ`, type: 'success' })
             setJsonInput('')
@@ -291,7 +322,7 @@ export default function ExternalExpensesClient() {
             switch (groupBy) {
                 case 'costCenter': key = row.costCenter; label = row.costCenter; break
                 case 'account': key = row.accountCode; label = `${row.accountCode} - ${row.accountName}`; break
-                case 'month': key = String(row.month); label = MONTH_NAMES[row.month] || `شهر ${row.month}`; break
+                case 'month': key = row.expenseDate; label = row.expenseDate; break
                 case 'company': key = String(row.companyId); label = row.companyName; break
                 default: key = 'all'; label = 'الكل'
             }
@@ -442,7 +473,7 @@ export default function ExternalExpensesClient() {
                             <option value="none">بدون تجميع</option>
                             <option value="costCenter">تجميع حسب مركز التكلفة</option>
                             <option value="account">تجميع حسب الحساب</option>
-                            <option value="month">تجميع حسب الشهر</option>
+                            <option value="month">تجميع حسب التاريخ</option>
                             <option value="company">تجميع حسب الشركة</option>
                         </select>
                     </div>
@@ -483,7 +514,7 @@ export default function ExternalExpensesClient() {
                                                         <th className="px-6 py-3 font-semibold">مركز التكلفة</th>
                                                         <th className="px-6 py-3 font-semibold">كود الحساب</th>
                                                         <th className="px-6 py-3 font-semibold">اسم الحساب</th>
-                                                        <th className="px-6 py-3 font-semibold">الشهر</th>
+                                                        <th className="px-6 py-3 font-semibold">التاريخ</th>
                                                         <th className="px-6 py-3 font-semibold">المبلغ</th>
                                                         <th className="px-6 py-3 font-semibold">إعادة التوزيع</th>
                                                     </tr>
@@ -496,7 +527,7 @@ export default function ExternalExpensesClient() {
                                                             <td className="px-6 py-3 text-gray-700">{row.costCenter}</td>
                                                             <td className="px-6 py-3 text-gray-500 font-mono text-xs" dir="ltr">{row.accountCode}</td>
                                                             <td className="px-6 py-3 text-gray-900">{row.accountName}</td>
-                                                            <td className="px-6 py-3 text-gray-600"><span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md text-xs font-medium">{MONTH_NAMES[row.month] || row.month}</span></td>
+                                                            <td className="px-6 py-3 text-gray-600"><span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md text-xs font-medium">{row.expenseDate}</span></td>
                                                             <td className="px-6 py-3 text-blue-700 font-semibold whitespace-nowrap" dir="ltr">{fmtDec(row.expenses)} ر.س</td>
                                                             <td className="px-6 py-3 text-center">
                                                                 <button
@@ -532,7 +563,7 @@ export default function ExternalExpensesClient() {
                                         <th className="px-6 py-4 font-semibold">مركز التكلفة</th>
                                         <th className="px-6 py-4 font-semibold">كود الحساب</th>
                                         <th className="px-6 py-4 font-semibold">اسم الحساب</th>
-                                        <th className="px-6 py-4 font-semibold">الشهر</th>
+                                        <th className="px-6 py-4 font-semibold">التاريخ</th>
                                         <th className="px-6 py-4 font-semibold">المبلغ</th>
                                         <th className="px-6 py-4 font-semibold">إعادة التوزيع</th>
                                     </tr>
@@ -546,7 +577,7 @@ export default function ExternalExpensesClient() {
                                             <td className="px-6 py-4 text-gray-700">{row.costCenter}</td>
                                             <td className="px-6 py-4 text-gray-500 font-mono text-xs" dir="ltr">{row.accountCode}</td>
                                             <td className="px-6 py-4 text-gray-900">{row.accountName}</td>
-                                            <td className="px-6 py-4 text-gray-600"><span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-medium">{MONTH_NAMES[row.month] || row.month}</span></td>
+                                            <td className="px-6 py-4 text-gray-600"><span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-medium">{row.expenseDate}</span></td>
                                             <td className="px-6 py-4 text-blue-700 font-semibold whitespace-nowrap" dir="ltr">{fmtDec(row.expenses)} ر.س</td>
                                             <td className="px-6 py-4 text-center">
                                                 <button

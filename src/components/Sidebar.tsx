@@ -18,6 +18,7 @@ const navItems = [
     { label: 'ربط المصاريف', href: '/dashboard/expense-mapping', icon: '🔗' },
     { label: 'توزيع الرواتب', href: '/dashboard/salary-distribution', icon: '👥' },
     { label: 'استيراد المصاريف', href: '/dashboard/expenses/import', icon: '📥' },
+    { label: 'مزامنة أودو', href: '/dashboard/odoo-sync', icon: '☁️' },
     { label: 'تقرير شامل', href: '/dashboard/report', icon: '📈' },
     { label: 'إدارة المستخدمين', href: '/dashboard/admin', icon: '👤' },
 ]

@@ -26,10 +26,107 @@ export default async function ReportPage() {
         .from('project_staffing')
         .select('id, project_id, role_name, monthly_salary, staff_count, duration_months')
 
-    // 3. Fetch Actual Expenses
-    const { data: actuals } = await supabase
-        .from('actual_expenses')
-        .select('project_id, amount, expense_id, staffing_id')
+    // 3. Fetch Actual Expenses from Cache & Mapping (Odoo Sync as single source of truth)
+    const { data: cache } = await supabase.from('external_expenses_cache').select('*')
+    const { data: mappings } = await supabase.from('expense_mapping').select('*')
+
+    const actuals: { project_id: string, amount: number, expense_id: string | null, staffing_id: string | null }[] = []
+    const SALARY_KEYWORDS = ['رواتب', 'أجور', 'مرتبات']
+    const isSalaryExpense = (name: string) => SALARY_KEYWORDS.some(k => name.includes(k))
+
+    let unmappedTotal = 0
+    cache?.forEach(row => {
+        const mapping = mappings?.find(m => m.external_cost_center === row.cost_center && m.external_account_code === row.account_code)
+        
+        let projId = mapping?.linked_project_id
+        const intName = mapping?.internal_expense_name || row.account_name
+
+        if (projId) {
+            let expenseId = null
+            let staffingId = null
+
+            if (isSalaryExpense(intName)) {
+                const staff = staffing?.find(s => s.project_id === projId && (s.role_name === intName || isSalaryExpense(s.role_name)))
+                if (staff) {
+                    staffingId = staff.id
+                } else {
+                    const newFakeId = `fake-staff-${projId}-${intName}`
+                    if (staffing) {
+                        staffing.push({ id: newFakeId, project_id: projId, role_name: intName, staff_count: 1, monthly_salary: 0, duration_months: 0 } as any)
+                    }
+                    staffingId = newFakeId
+                }
+            } else {
+                const exp = expenses?.find(e => e.project_id === projId && e.name === intName)
+                if (exp) {
+                    expenseId = exp.id
+                } else {
+                    const newFakeId = `fake-exp-${projId}-${intName}`
+                    if (expenses) {
+                        expenses.push({ id: newFakeId, project_id: projId, name: intName, target_amount: 0 } as any)
+                    }
+                    expenseId = newFakeId
+                }
+            }
+
+            actuals.push({
+                project_id: projId,
+                amount: Number(row.expenses),
+                expense_id: expenseId,
+                staffing_id: staffingId
+            })
+        } else if (mapping?.internal_expense_name) {
+            // Mapped to a Name, but NO PROJECT!
+            // Prorate equally (or by total value) across active projects
+            const activeProjects = projects.filter(p => p.status === 'Active') || []
+            const activeProjectsTotalValue = activeProjects.reduce((s, p) => s + Number(p.total_value), 0)
+            
+            if (activeProjectsTotalValue > 0) {
+                activeProjects.forEach(p => {
+                    const share = Number(p.total_value) / activeProjectsTotalValue
+                    const proratedAmount = Number(row.expenses) * share
+                    
+                    let expenseId = null
+                    let staffingId = null
+                    
+                    if (isSalaryExpense(intName)) {
+                        const staff = staffing?.find(s => s.project_id === p.id && (s.role_name === intName || isSalaryExpense(s.role_name)))
+                        if (staff) {
+                            staffingId = staff.id
+                        } else {
+                            const newFakeId = `fake-staff-${p.id}-${intName}`
+                            if (staffing) {
+                                staffing.push({ id: newFakeId, project_id: p.id, role_name: intName, staff_count: 1, monthly_salary: 0, duration_months: 0 } as any)
+                            }
+                            staffingId = newFakeId
+                        }
+                    } else {
+                        const exp = expenses?.find(e => e.project_id === p.id && e.name === intName)
+                        if (exp) {
+                            expenseId = exp.id
+                        } else {
+                            const newFakeId = `fake-exp-${p.id}-${intName}`
+                            if (expenses) {
+                                expenses.push({ id: newFakeId, project_id: p.id, name: intName, target_amount: 0 } as any)
+                            }
+                            expenseId = newFakeId
+                        }
+                    }
+
+                    actuals.push({
+                        project_id: p.id,
+                        amount: proratedAmount,
+                        expense_id: expenseId,
+                        staffing_id: staffingId
+                    })
+                })
+            } else {
+                unmappedTotal += Number(row.expenses)
+            }
+        } else {
+            unmappedTotal += Number(row.expenses)
+        }
+    })
 
     // 4. Fetch Claims (Invoices)
     const { data: claims } = await supabase
@@ -52,6 +149,17 @@ export default async function ReportPage() {
     actuals?.forEach(a => {
         actualMap[a.project_id] = (actualMap[a.project_id] || 0) + Number(a.amount)
     })
+
+    // Distribute unmappedTotal proportionally among ACTIVE projects
+    const activeProjects = projects.filter(p => p.status === 'Active')
+    const activeProjectsTotalValue = activeProjects.reduce((s, p) => s + Number(p.total_value), 0)
+
+    if (activeProjectsTotalValue > 0 && unmappedTotal > 0) {
+        activeProjects.forEach(p => {
+            const share = Number(p.total_value) / activeProjectsTotalValue
+            actualMap[p.id] = (actualMap[p.id] || 0) + (unmappedTotal * share)
+        })
+    }
 
     let totalCollected = 0
     let totalPending = 0
@@ -159,7 +267,7 @@ export default async function ReportPage() {
     }
 
     // ─── المصاريف غير المصنفة (بدون expense_id ولا staffing_id) ───
-    const grandTotalActual = actuals?.reduce((s, a) => s + Number(a.amount), 0) ?? 0
+    const grandTotalActual = cache?.reduce((s, row) => s + Number(row.expenses), 0) ?? 0
     const classifiedActual = (actuals?.filter(a => a.expense_id).reduce((s, a) => s + Number(a.amount), 0) ?? 0)
         + staffingActualTotal
     const unlinkedActual = Math.max(0, grandTotalActual - classifiedActual)

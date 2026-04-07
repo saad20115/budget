@@ -47,10 +47,38 @@ export default async function DashboardOverview({
     const collectedRevenue = claims.filter(c => c.status === 'Paid').reduce((sum, c) => sum + Number(c.amount), 0)
     const pendingRevenue = claims.filter(c => ['Pending', 'Sent', 'Overdue'].includes(c.status)).reduce((sum, c) => sum + Number(c.amount), 0)
 
-    // Fetch and calculate total actual spending scoped to filtered projects
-    const { data: actualExpensesData } = await supabase.from('actual_expenses').select('project_id, amount')
-    const filteredActuals = (actualExpensesData ?? []).filter(e => projectIds.includes(e.project_id))
-    const totalActualSpending = filteredActuals.reduce((sum, e) => sum + Number(e.amount), 0)
+    // Fetch and calculate total actual spending scoped to filtered projects dynamically from Odoo Cache
+    const { data: cache } = await supabase.from('external_expenses_cache').select('cost_center, account_code, account_name, expenses')
+    const { data: mappings } = await supabase.from('expense_mapping').select('external_cost_center, external_account_code, linked_project_id')
+
+    const actualMap: Record<string, number> = {}
+    let unmappedTotal = 0
+
+    cache?.forEach(row => {
+        const amt = Number(row.expenses)
+        const mapping = mappings?.find(m => m.external_cost_center === row.cost_center && m.external_account_code === row.account_code)
+        
+        if (mapping && mapping.linked_project_id) {
+            actualMap[mapping.linked_project_id] = (actualMap[mapping.linked_project_id] || 0) + amt
+        } else {
+            unmappedTotal += amt
+        }
+    })
+
+    const activeProjects = allProjects.filter(p => p.status === 'Active')
+    const activeProjectsTotalValue = activeProjects.reduce((s, p) => s + Number(p.total_value), 0)
+    
+    if (activeProjectsTotalValue > 0 && unmappedTotal > 0) {
+        activeProjects.forEach(p => {
+            const share = Number(p.total_value) / activeProjectsTotalValue
+            actualMap[p.id] = (actualMap[p.id] || 0) + (unmappedTotal * share)
+        })
+    }
+
+    let totalActualSpending = 0
+    projects.forEach(p => {
+        totalActualSpending += actualMap[p.id] || 0
+    })
 
     // Fetch budget items scoped to filtered projects
     const { data: budgetItemsData } = await supabase.from('project_expenses').select('project_id, target_amount')
@@ -88,7 +116,6 @@ export default async function DashboardOverview({
     const { data: projectExpenses } = await supabase.from('project_expenses').select('project_id, target_amount')
 
     const budgetMap: Record<string, number> = {}
-    const actualMap: Record<string, number> = {}
 
     // Include staffing in budget
     staffing.forEach(st => {
@@ -99,9 +126,7 @@ export default async function DashboardOverview({
         budgetMap[pe.project_id] = (budgetMap[pe.project_id] || 0) + Number(pe.target_amount)
     })
 
-    filteredActuals.forEach(ac => {
-        actualMap[ac.project_id] = (actualMap[ac.project_id] || 0) + Number(ac.amount)
-    })
+    // Actual map is already populated with the distributed values!
 
     const chartData = projects.map(p => ({
         name: p.name.length > 20 ? p.name.substring(0, 20) + '...' : p.name,

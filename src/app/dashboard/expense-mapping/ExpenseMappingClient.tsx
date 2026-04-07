@@ -14,7 +14,7 @@ interface ExternalRow {
     accountCode: string
     accountName: string
     expenses: number
-    month: number
+    expense_date: string
 }
 
 interface MappingRow {
@@ -91,7 +91,7 @@ export default function ExpenseMappingClient() {
                 accountCode: r.account_code,
                 accountName: r.account_name,
                 expenses: Number(r.expenses),
-                month: r.month,
+                expense_date: r.expense_date,
             })))
 
             setMappings(mapRes.data || [])
@@ -273,10 +273,15 @@ export default function ExpenseMappingClient() {
         for (const key of keys) {
             if (obj[key] && Array.isArray(obj[key])) return obj[key] as ExternalRow[]
         }
+        // Look for any array property whose first element looks like an expense row
+        const expenseFieldNames = ['expenses', 'originalExpenses', 'totalExpenses', 'companyId', 'costCenter', 'accountCode', 'company_id', 'cost_center', 'account_code']
         for (const key of Object.keys(obj)) {
             const val = obj[key]
-            if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object' && val[0] !== null && 'expenses' in val[0]) {
-                return val as ExternalRow[]
+            if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object' && val[0] !== null) {
+                const firstItem = val[0] as Record<string, unknown>
+                if (expenseFieldNames.some(f => f in firstItem)) {
+                    return val as ExternalRow[]
+                }
             }
         }
         return null
@@ -288,17 +293,17 @@ export default function ExpenseMappingClient() {
         setMessage(null)
         try {
             const parsed = JSON.parse(jsonInput.trim())
-            let rows: ExternalRow[] | null = null
+            let rows: Record<string, unknown>[] | null = null
             if (Array.isArray(parsed)) { rows = parsed }
             else if (typeof parsed === 'object' && parsed !== null) {
-                rows = findExpenseRows(parsed as Record<string, unknown>)
+                rows = findExpenseRows(parsed as Record<string, unknown>) as Record<string, unknown>[] | null
                 if (!rows) {
-                    const allRows: ExternalRow[] = []
+                    const allRows: Record<string, unknown>[] = []
                     for (const key of Object.keys(parsed)) {
                         const val = (parsed as Record<string, unknown>)[key]
                         if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
                             const nested = findExpenseRows(val as Record<string, unknown>)
-                            if (nested) allRows.push(...nested)
+                            if (nested) allRows.push(...(nested as unknown as Record<string, unknown>[]))
                         }
                     }
                     if (allRows.length > 0) rows = allRows
@@ -306,42 +311,90 @@ export default function ExpenseMappingClient() {
             }
             if (!rows || rows.length === 0) throw new Error('لم يتم العثور على بيانات مصاريف في الـ JSON')
 
+            const errors: string[] = []
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const upsertData = rows.map((r: any) => {
-                // Support both r.expenses and r.originalExpenses
-                const expenses = Number(r.expenses ?? r.originalExpenses ?? 0)
-                // Support month (integer) or derive from dateFrom (e.g. "2025-10-01" → 10)
-                let month: number | null = null
-                if (r.month != null) {
-                    month = Number(r.month)
-                } else if (r.dateFrom) {
-                    const parts = String(r.dateFrom).split('-')
-                    if (parts.length >= 2) month = Number(parts[1])
-                }
-                return {
-                    company_id: r.companyId,
-                    company_name: r.companyName,
-                    cost_center: r.costCenter,
-                    account_code: r.accountCode,
-                    account_name: r.accountName,
-                    expenses,
-                    month,
-                    updated_at: new Date().toISOString(),
+            const upsertData: any[] = []
+
+            rows.forEach((r: Record<string, unknown>, idx: number) => {
+                try {
+                    // Support: expenses, originalExpenses, totalExpenses, allocatedAdmin
+                    const baseExpenses = Number(r.expenses ?? r.originalExpenses ?? r.totalExpenses ?? 0)
+                    const allocatedAdmin = Number(r.allocatedAdmin ?? 0)
+                    const expenses = baseExpenses + allocatedAdmin
+
+                    // Support month (integer) or derive from dateFrom (e.g. "2025-10-01" → 10)
+                    let month: number = 0
+                    if (r.month != null && r.month !== '') {
+                        month = Number(r.month)
+                    } else if (r.dateFrom) {
+                        const parts = String(r.dateFrom).split('-')
+                        if (parts.length >= 2) month = Number(parts[1])
+                    }
+                    // Ensure month is a valid number (not NaN/null) — DB UNIQUE constraint requires it
+                    if (isNaN(month) || month === null || month === undefined) month = 0
+
+                    const companyId = r.companyId ?? r.company_id
+                    const companyName = r.companyName ?? r.company_name ?? ''
+                    const costCenter = r.costCenter ?? r.cost_center ?? ''
+                    const accountCode = r.accountCode ?? r.account_code ?? ''
+                    const accountName = r.accountName ?? r.account_name ?? ''
+                    const groupId = r.groupId ?? r.group_id ?? null
+                    const groupName = r.groupName ?? r.group_name ?? null
+
+                    if (!companyId || !costCenter || !accountCode) {
+                        errors.push(`سطر ${idx + 1}: بيانات ناقصة (companyId/costCenter/accountCode)`)
+                        return
+                    }
+
+                    upsertData.push({
+                        company_id: Number(companyId),
+                        company_name: String(companyName),
+                        cost_center: String(costCenter),
+                        account_code: String(accountCode),
+                        account_name: String(accountName),
+                        group_id: groupId != null ? Number(groupId) : null,
+                        group_name: groupName != null ? String(groupName) : null,
+                        expenses,
+                        month,
+                        updated_at: new Date().toISOString(),
+                    })
+                } catch (rowErr) {
+                    errors.push(`سطر ${idx + 1}: ${rowErr instanceof Error ? rowErr.message : 'خطأ غير معروف'}`)
                 }
             })
 
-            const { error } = await supabase
-                .from('external_expenses_cache')
-                .upsert(upsertData, { onConflict: 'company_id,cost_center,account_code,month' })
+            if (upsertData.length === 0) {
+                throw new Error(`لم يتم استخراج أي سجلات صالحة.\n${errors.join('\n')}`)
+            }
 
-            if (error) throw error
+            // Deduplicate: keep last occurrence per unique key to avoid
+            // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+            const deduped = new Map<string, typeof upsertData[0]>()
+            for (const row of upsertData) {
+                const key = `${row.company_id}||${row.cost_center}||${row.account_code}||${row.month}`
+                deduped.set(key, row)
+            }
+            const uniqueData = Array.from(deduped.values())
 
-            setMessage({ text: `✅ تم تحديث ${rows.length} سجل — الربط محفوظ`, type: 'success' })
+            // Batch upsert in chunks of 500 to avoid payload limits
+            const CHUNK = 500
+            let totalInserted = 0
+            for (let i = 0; i < uniqueData.length; i += CHUNK) {
+                const chunk = uniqueData.slice(i, i + CHUNK)
+                const { error } = await supabase
+                    .from('external_expenses_cache')
+                    .upsert(chunk, { onConflict: 'company_id,cost_center,account_code,month' })
+                if (error) throw new Error(`خطأ في الدفعة ${Math.floor(i / CHUNK) + 1}: ${error.message}`)
+                totalInserted += chunk.length
+            }
+
+            const warnText = errors.length > 0 ? `\n⚠️ ${errors.length} سجل تم تجاهله` : ''
+            setMessage({ text: `✅ تم تحديث ${totalInserted} سجل — الربط محفوظ${warnText}`, type: 'success' })
             setJsonInput('')
             loadData()
         } catch (err: unknown) {
             if (err instanceof SyntaxError) {
-                setMessage({ text: 'خطأ في صيغة JSON', type: 'error' })
+                setMessage({ text: `خطأ في صيغة JSON — تأكد من صحة الأقواس والفواصل:\n${err.message}`, type: 'error' })
             } else {
                 setMessage({ text: err instanceof Error ? err.message : 'حدث خطأ', type: 'error' })
             }
