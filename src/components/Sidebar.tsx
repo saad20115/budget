@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 const navItems = [
+    { label: 'الصفحة الرئيسية', href: 'https://reports.jalbait.com/', icon: '🏠', external: true },
     { label: 'لوحة التحكم', href: '/dashboard', icon: '📊' },
     { label: 'المشاريع', href: '/dashboard/projects', icon: '🏗️' },
     { label: 'الإيرادات والمطالبات', href: '/dashboard/revenues', icon: '💰' },
@@ -91,20 +92,31 @@ export default function Sidebar() {
                 {/* Nav */}
                 <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                     {navItems.map((item) => (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            onClick={() => setIsOpen(false)}
-                            className={cn(
-                                'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
-                                pathname === item.href
-                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                            )}
-                        >
-                            <span>{item.icon}</span>
-                            {item.label}
-                        </Link>
+                        item.external ? (
+                            <a
+                                key={item.href}
+                                href={item.href}
+                                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                            >
+                                <span>{item.icon}</span>
+                                {item.label}
+                            </a>
+                        ) : (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                onClick={() => setIsOpen(false)}
+                                className={cn(
+                                    'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+                                    pathname === item.href
+                                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                                )}
+                            >
+                                <span>{item.icon}</span>
+                                {item.label}
+                            </Link>
+                        )
                     ))}
                 </nav>
 

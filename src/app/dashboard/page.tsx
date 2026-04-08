@@ -158,6 +158,13 @@ export default async function DashboardOverview({
 
                 {/* Quick Actions */}
                 <div className="flex flex-wrap gap-3">
+                    <a
+                        href="https://reports.jalbait.com/"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center gap-2"
+                    >
+                        <span>🏠</span>
+                        الصفحة الرئيسية (التقارير المالية)
+                    </a>
                     <Link
                         href="/dashboard/projects/new"
                         className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center gap-2"
