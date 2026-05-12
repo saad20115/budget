@@ -523,7 +523,7 @@ export default function ExternalExpensesClient() {
                                                     {group.rows.map((row) => (
                                                         <tr key={row.id} className={`hover:bg-gray-50/50 transition-colors ${selectedIds.has(row.id) ? 'bg-blue-50/50' : ''}`}>
                                                             <td className="px-3 py-3"><input type="checkbox" title="تحديد" className="w-4 h-4 rounded cursor-pointer accent-blue-600" checked={selectedIds.has(row.id)} onChange={() => toggleSelect(row.id)} /></td>
-                                                            <td className="px-6 py-3 text-gray-700 text-xs max-w-[200px] truncate" title={row.companyName}>{row.companyName.length > 30 ? row.companyName.substring(0, 30) + '...' : row.companyName}</td>
+                                                            <td className="px-6 py-3 text-gray-700 text-xs max-w-[200px] truncate" title={row.companyName || ''}>{(row.companyName || '').length > 30 ? (row.companyName || '').substring(0, 30) + '...' : (row.companyName || '')}</td>
                                                             <td className="px-6 py-3 text-gray-700">{row.costCenter}</td>
                                                             <td className="px-6 py-3 text-gray-500 font-mono text-xs" dir="ltr">{row.accountCode}</td>
                                                             <td className="px-6 py-3 text-gray-900">{row.accountName}</td>
@@ -573,7 +573,7 @@ export default function ExternalExpensesClient() {
                                         <tr key={row.id} className={`hover:bg-gray-50/50 transition-colors ${selectedIds.has(row.id) ? 'bg-blue-50/50' : ''}`}>
                                             <td className="px-3 py-4"><input type="checkbox" className="w-4 h-4 rounded cursor-pointer accent-blue-600" checked={selectedIds.has(row.id)} onChange={() => toggleSelect(row.id)} /></td>
                                             <td className="px-6 py-4 text-gray-400 text-xs">{idx + 1}</td>
-                                            <td className="px-6 py-4 text-gray-700 text-xs max-w-[200px] truncate" title={row.companyName}>{row.companyName.length > 30 ? row.companyName.substring(0, 30) + '...' : row.companyName}</td>
+                                            <td className="px-6 py-4 text-gray-700 text-xs max-w-[200px] truncate" title={row.companyName || ''}>{(row.companyName || '').length > 30 ? (row.companyName || '').substring(0, 30) + '...' : (row.companyName || '')}</td>
                                             <td className="px-6 py-4 text-gray-700">{row.costCenter}</td>
                                             <td className="px-6 py-4 text-gray-500 font-mono text-xs" dir="ltr">{row.accountCode}</td>
                                             <td className="px-6 py-4 text-gray-900">{row.accountName}</td>

@@ -45,7 +45,7 @@ async function syncConnection(conn: any, supabase: ReturnType<typeof getSupabase
 
     // Filters
     const dateFrom = filtConf.dateFrom ? new Date(filtConf.dateFrom) : null
-    const dateTo = filtConf.dateTo ? new Date(filtConf.dateTo) : null
+    const dateTo = new Date() // Always bound to today regardless of DB payload
     const allowedCCs = filtConf.allowedCostCenters || []
     const allowedTypes = filtConf.allowedAccountTypes || []
     const allowedCodes = filtConf.allowedAccountCodes || [] // e.g. prefixes ["5", "8"]
@@ -53,8 +53,8 @@ async function syncConnection(conn: any, supabase: ReturnType<typeof getSupabase
     const matchedRecords = []
     let totalRawCount = 0
     let offset = 0
-    const limit = 100
-    const CONCURRENCY = 1
+    const limit = 2000
+    const CONCURRENCY = 3
     let hasMore = true
 
     while (hasMore) {
@@ -156,7 +156,13 @@ async function syncConnection(conn: any, supabase: ReturnType<typeof getSupabase
         }
 
         if (conn.url.includes('limit=')) hasMore = false
-        if (hasMore) offset += (limit * CONCURRENCY)
+        if (hasMore) {
+            offset += (limit * CONCURRENCY)
+            if (offset > 200000) {
+                console.warn(`[Auto-Sync] Safety limit reached (> 200K records). Breaking loop.`)
+                break
+            }
+        }
     }
 
     if (matchedRecords.length === 0) {

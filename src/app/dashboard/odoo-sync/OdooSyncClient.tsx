@@ -361,7 +361,7 @@ export default function OdooSyncClient() {
                 if (!rawDate) return false
                 const d = new Date(rawDate as string)
                 if (fc.dateFrom && d < new Date(fc.dateFrom)) return false
-                if (fc.dateTo && d > new Date(fc.dateTo)) return false
+                if (d > new Date()) return false
             }
 
             const cc = String(r[mc.costCenter || 'cost_center'] || '')
@@ -678,15 +678,14 @@ export default function OdooSyncClient() {
                                                                 value={conn.filter_config?.dateFrom || ''} 
                                                                 onChange={(e) => {
                                                                     const newFrom = e.target.value
-                                                                    const today = new Date().toISOString().split('T')[0]
-                                                                    updateConnection(conn.id, 'filter_config', { ...conn.filter_config, dateFrom: newFrom, dateTo: today })
+                                                                    updateConnection(conn.id, 'filter_config', { ...conn.filter_config, dateFrom: newFrom })
                                                                 }} 
                                                                 className="w-full px-3 h-10 rounded-lg border border-gray-300 text-sm focus:border-blue-500" 
                                                             />
                                                         </div>
                                                         <div className="space-y-1">
                                                             <label className="text-xs text-gray-500">إلى تاريخ</label>
-                                                            <input type="date" disabled value={conn.filter_config?.dateTo || ''} className="w-full px-3 h-10 rounded-lg border border-gray-200 text-sm bg-gray-50 text-gray-400" title="يتم تعيينه تلقائياً لليوم" />
+                                                            <input type="date" disabled value={new Date().toISOString().split('T')[0]} className="w-full px-3 h-10 rounded-lg border border-gray-200 text-sm bg-gray-50 text-gray-400" title="يتم تعيينه تلقائياً لليوم" />
                                                         </div>
                                                     </div>
                                                 </div>

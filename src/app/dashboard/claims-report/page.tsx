@@ -24,31 +24,7 @@ export default async function ClaimsReportPage() {
 
     const projects: Project[] = projectsData ?? []
     
-    const today = new Date().toISOString().split('T')[0]
-    const claims: ProjectClaim[] = (claimsData ?? []).map(claim => {
-        if (claim.status === 'Paid') return claim
-        
-        const dueParts = claim.due_date.split('-');
-        const todayParts = today.split('-');
-        const d1 = new Date(Date.UTC(Number(dueParts[0]), Number(dueParts[1])-1, Number(dueParts[2])));
-        const d2 = new Date(Date.UTC(Number(todayParts[0]), Number(todayParts[1])-1, Number(todayParts[2])));
-        const diffDays = (d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24);
-        
-        let newStatus = claim.status;
-        if (diffDays >= 0 && diffDays <= 5) {
-            newStatus = 'Due';
-        } else if (diffDays > 5) {
-            newStatus = 'Overdue';
-        } else if (diffDays < 0 && (claim.status === 'Overdue' || claim.status === 'Due')) {
-            newStatus = (claim.paid_amount || 0) > 0 ? 'PartiallyPaid' : 'Pending';
-        }
-
-        if (newStatus !== claim.status) {
-            return { ...claim, status: newStatus as any }
-        }
-        
-        return claim
-    })
+    const claims: ProjectClaim[] = claimsData ?? []
 
     return (
         <ClaimsReportClient projects={projects} claims={claims} />

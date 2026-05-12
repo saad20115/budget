@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { Project, ProjectClaim } from '@/lib/types'
 import { openPrintWindow } from './ClaimsPrintTemplates'
 
@@ -39,6 +41,32 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<string>('all')
     const [categoryFilter, setCategoryFilter] = useState<string>('all')
+
+    const [editingClaimId, setEditingClaimId] = useState<string | null>(null)
+    const [editForm, setEditForm] = useState<{ status: string; notes: string }>({ status: '', notes: '' })
+    const [isSaving, setIsSaving] = useState(false)
+    const router = useRouter()
+    const supabase = createClient()
+
+    const handleSaveClaim = async (claimId: string) => {
+        setIsSaving(true)
+        try {
+            const { error } = await supabase
+                .from('project_claims')
+                .update({ status: editForm.status, notes: editForm.notes })
+                .eq('id', claimId)
+            
+            if (error) throw error
+            
+            setEditingClaimId(null)
+            router.refresh()
+        } catch (error) {
+            console.error('Error updating claim:', error)
+            alert('حدث خطأ أثناء حفظ التعديلات')
+        } finally {
+            setIsSaving(false)
+        }
+    }
 
     // Dual scrollbar refs  
     const topScrollRef = useRef<HTMLDivElement>(null)
@@ -414,38 +442,92 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
 
                                             return (
                                                 <td key={claim.id} className="px-3 py-4 align-top min-w-[200px]">
-                                                    <div className={`rounded-xl border p-3 ${cfg.bg} ${cfg.border} relative`}>
-                                                        {isOverdue && (
-                                                            <span className="absolute top-2 left-2 text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full border border-red-200 animate-pulse">!</span>
-                                                        )}
-                                                        <p className="font-semibold text-gray-900 text-xs leading-tight mb-2 pr-1">{claim.title}</p>
-                                                        
-                                                        {claim.status === 'PartiallyPaid' ? (
-                                                            <div className="mb-2" dir="ltr">
-                                                                <p className="text-base font-bold text-gray-900">{fmt(Number(claim.amount))}</p>
-                                                                <p className="text-xs font-semibold text-emerald-600 mt-0.5 text-right" dir="rtl">محصّل: {fmt(Number(claim.paid_amount || 0))}</p>
-                                                                <p className="text-xs font-semibold text-amber-600 text-right" dir="rtl">متبقي: {fmt(Number(claim.amount) - Number(claim.paid_amount || 0))}</p>
+                                                    <div className={`rounded-xl border p-3 ${cfg.bg} ${cfg.border} relative group`}>
+                                                        {editingClaimId === claim.id ? (
+                                                            <div className="space-y-3 relative z-20">
+                                                                <div>
+                                                                    <label className="text-[10px] text-gray-500 font-bold mb-1 block">الحالة</label>
+                                                                    <select
+                                                                        value={editForm.status}
+                                                                        onChange={e => setEditForm(prev => ({ ...prev, status: e.target.value }))}
+                                                                        className="w-full text-xs p-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                    >
+                                                                        {ALL_STATUSES.map(s => (
+                                                                            <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] text-gray-500 font-bold mb-1 block">ملاحظات</label>
+                                                                    <textarea
+                                                                        value={editForm.notes}
+                                                                        onChange={e => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                                                                        className="w-full text-xs p-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none min-h-[60px]"
+                                                                        placeholder="أضف تعليقاً..."
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center gap-2 pt-1">
+                                                                    <button
+                                                                        onClick={() => handleSaveClaim(claim.id)}
+                                                                        disabled={isSaving}
+                                                                        className="flex-1 bg-blue-600 text-white text-[10px] font-bold py-1.5 rounded hover:bg-blue-700 disabled:opacity-50"
+                                                                    >
+                                                                        {isSaving ? 'حفظ...' : 'حفظ'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setEditingClaimId(null)}
+                                                                        disabled={isSaving}
+                                                                        className="flex-1 bg-gray-200 text-gray-700 text-[10px] font-bold py-1.5 rounded hover:bg-gray-300 disabled:opacity-50"
+                                                                    >
+                                                                        إلغاء
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         ) : (
-                                                            <p className="text-base font-bold text-gray-900 mb-2" dir="ltr">{fmt(Number(claim.amount))}</p>
-                                                        )}
+                                                            <>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditForm({ status: claim.status, notes: claim.notes || '' })
+                                                                        setEditingClaimId(claim.id)
+                                                                    }}
+                                                                    className="absolute top-2 left-2 p-1.5 bg-white/80 hover:bg-white text-gray-400 hover:text-blue-600 rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-gray-200 z-10"
+                                                                    title="تعديل سريع"
+                                                                >
+                                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                                                </button>
+                                                                {isOverdue && (
+                                                                    <span className="absolute top-2 left-10 text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full border border-red-200 animate-pulse">!</span>
+                                                                )}
+                                                                <p className="font-semibold text-gray-900 text-xs leading-tight mb-2 pr-1">{claim.title}</p>
+                                                                
+                                                                {claim.status === 'PartiallyPaid' ? (
+                                                                    <div className="mb-2" dir="ltr">
+                                                                        <p className="text-base font-bold text-gray-900">{fmt(Number(claim.amount))}</p>
+                                                                        <p className="text-xs font-semibold text-emerald-600 mt-0.5 text-right" dir="rtl">محصّل: {fmt(Number(claim.paid_amount || 0))}</p>
+                                                                        <p className="text-xs font-semibold text-amber-600 text-right" dir="rtl">متبقي: {fmt(Number(claim.amount) - Number(claim.paid_amount || 0))}</p>
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-base font-bold text-gray-900 mb-2" dir="ltr">{fmt(Number(claim.amount))}</p>
+                                                                )}
 
-                                                        <StatusBadge status={claim.status} />
-                                                        <div className="mt-2 space-y-1">
-                                                            <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                                                                <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-                                                                <span>الاستحقاق: <span className={`font-semibold ${isOverdue ? 'text-red-600' : 'text-gray-700'}`}>{dueDate}</span></span>
-                                                            </div>
-                                                            {collectDate && (
-                                                                <div className="flex items-center gap-1 text-[11px] text-emerald-600">
-                                                                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="10" /></svg>
-                                                                    <span>التحصيل: <span className="font-semibold">{collectDate}</span></span>
+                                                                <StatusBadge status={claim.status} />
+                                                                <div className="mt-2 space-y-1">
+                                                                    <div className="flex items-center gap-1 text-[11px] text-gray-500">
+                                                                        <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+                                                                        <span>الاستحقاق: <span className={`font-semibold ${isOverdue ? 'text-red-600' : 'text-gray-700'}`}>{dueDate}</span></span>
+                                                                    </div>
+                                                                    {collectDate && (
+                                                                        <div className="flex items-center gap-1 text-[11px] text-emerald-600">
+                                                                            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="10" /></svg>
+                                                                            <span>التحصيل: <span className="font-semibold">{collectDate}</span></span>
+                                                                        </div>
+                                                                    )}
+                                                                    {claim.notes && (
+                                                                        <p className="text-[11px] text-gray-400 italic mt-1.5 leading-relaxed break-words whitespace-pre-wrap">{claim.notes}</p>
+                                                                    )}
                                                                 </div>
-                                                            )}
-                                                            {claim.notes && (
-                                                                <p className="text-[11px] text-gray-400 italic truncate" title={claim.notes}>{claim.notes}</p>
-                                                            )}
-                                                        </div>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </td>
                                             )
