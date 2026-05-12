@@ -44,6 +44,8 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
 
     const [editingClaimId, setEditingClaimId] = useState<string | null>(null)
     const [editForm, setEditForm] = useState<{ status: string; notes: string }>({ status: '', notes: '' })
+    const [editingQiraatId, setEditingQiraatId] = useState<string | null>(null)
+    const [qiraatForm, setQiraatForm] = useState<{ text: string; color: string }>({ text: '', color: '' })
     const [isSaving, setIsSaving] = useState(false)
     const router = useRouter()
     const supabase = createClient()
@@ -63,6 +65,26 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
         } catch (error) {
             console.error('Error updating claim:', error)
             alert('حدث خطأ أثناء حفظ التعديلات')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const handleSaveQiraat = async (projectId: string) => {
+        setIsSaving(true)
+        try {
+            const { error } = await supabase
+                .from('projects')
+                .update({ qiraat_notes: qiraatForm })
+                .eq('id', projectId)
+            
+            if (error) throw error
+            
+            setEditingQiraatId(null)
+            router.refresh()
+        } catch (error) {
+            console.error('Error updating qiraat notes:', error)
+            alert('حدث خطأ أثناء حفظ متعلقات قراءات')
         } finally {
             setIsSaving(false)
         }
@@ -352,6 +374,9 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                 <th className="text-center px-4 py-4 font-semibold text-gray-500 min-w-[90px]">
                                     نسبة التحصيل
                                 </th>
+                                <th className="text-center px-4 py-4 font-semibold text-gray-700 min-w-[150px]">
+                                    متعلقات شركة قراءات
+                                </th>
                                 <th className="text-right px-4 py-4 font-semibold text-gray-700" colSpan={99}>
                                     تفاصيل المطالبات
                                 </th>
@@ -424,6 +449,76 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                                         style={{ width: collRate.toFixed(0) + '%' }}
                                                     />
                                                 </div>
+                                            </div>
+                                        </td>
+
+                                        {/* Qiraat Notes */}
+                                        <td className="px-3 py-4 align-top min-w-[180px]">
+                                            <div className="relative group/qiraat h-full flex flex-col">
+                                                {editingQiraatId === project.id ? (
+                                                    <div className="space-y-2 relative z-20 bg-white p-2 border border-gray-200 rounded-xl shadow-sm">
+                                                        <textarea
+                                                            value={qiraatForm.text}
+                                                            onChange={e => setQiraatForm(prev => ({ ...prev, text: e.target.value }))}
+                                                            className="w-full text-xs p-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none min-h-[50px] resize-y"
+                                                            placeholder="أضف نصاً أو أرقاماً..."
+                                                        />
+                                                        <div className="flex items-center gap-2">
+                                                            {['red', 'yellow', 'green', ''].map(color => (
+                                                                <button
+                                                                    key={color}
+                                                                    onClick={() => setQiraatForm(prev => ({ ...prev, color }))}
+                                                                    className={`w-4 h-4 rounded-full border border-gray-300 ${
+                                                                        color === 'red' ? 'bg-red-500' :
+                                                                        color === 'yellow' ? 'bg-yellow-400' :
+                                                                        color === 'green' ? 'bg-emerald-500' :
+                                                                        'bg-gray-100'
+                                                                    } ${qiraatForm.color === color ? 'ring-2 ring-offset-1 ring-gray-400' : ''}`}
+                                                                    title={color === '' ? 'بدون لون' : color}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 pt-1">
+                                                            <button
+                                                                onClick={() => handleSaveQiraat(project.id)}
+                                                                disabled={isSaving}
+                                                                className="flex-1 bg-blue-600 text-white text-[10px] font-bold py-1.5 rounded hover:bg-blue-700 disabled:opacity-50"
+                                                            >
+                                                                {isSaving ? 'حفظ...' : 'حفظ'}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setEditingQiraatId(null)}
+                                                                disabled={isSaving}
+                                                                className="flex-1 bg-gray-200 text-gray-700 text-[10px] font-bold py-1.5 rounded hover:bg-gray-300 disabled:opacity-50"
+                                                            >
+                                                                إلغاء
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className={`p-2.5 rounded-xl border flex-1 relative transition-colors ${
+                                                        project.qiraat_notes?.color === 'red' ? 'bg-red-50 border-red-200 text-red-900' :
+                                                        project.qiraat_notes?.color === 'yellow' ? 'bg-yellow-50 border-yellow-200 text-yellow-900' :
+                                                        project.qiraat_notes?.color === 'green' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
+                                                        'bg-gray-50 border-gray-200 text-gray-700'
+                                                    }`}>
+                                                        <button
+                                                            onClick={() => {
+                                                                setQiraatForm({ text: project.qiraat_notes?.text || '', color: project.qiraat_notes?.color || '' })
+                                                                setEditingQiraatId(project.id)
+                                                            }}
+                                                            className="absolute top-1 left-1 p-1 bg-white/50 hover:bg-white text-gray-400 hover:text-blue-600 rounded opacity-0 group-hover/qiraat:opacity-100 transition-all shadow-sm"
+                                                            title="تعديل متعلقات قراءات"
+                                                        >
+                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                                        </button>
+                                                        {project.qiraat_notes?.text ? (
+                                                            <p className="text-[11px] leading-relaxed break-words whitespace-pre-wrap">{project.qiraat_notes.text}</p>
+                                                        ) : (
+                                                            <p className="text-[10px] text-gray-400 italic mt-1">لا توجد بيانات</p>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </td>
 
@@ -549,6 +644,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                     <td className="px-4 py-4 text-center text-emerald-700">{fmt(kpis.paid)}</td>
                                     <td className="px-4 py-4 text-center text-amber-700">{fmt(kpis.total - kpis.paid)}</td>
                                     <td className="px-4 py-4 text-center text-gray-700">{kpis.collectionRate.toFixed(1)}%</td>
+                                    <td></td>
                                     <td className="px-4 py-4 text-gray-500 text-xs" colSpan={99}>
                                         محصل: {fmt(kpis.paid)} · معلق: {fmt(kpis.pending)} · متأخر: {fmt(kpis.overdue)}
                                     </td>

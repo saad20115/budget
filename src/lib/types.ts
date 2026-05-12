@@ -13,6 +13,7 @@ export interface Project {
     end_date?: string
     duration_months: number
     paid_amount?: number
+    qiraat_notes?: { text: string; color: string }
     created_at: string
 }
 
