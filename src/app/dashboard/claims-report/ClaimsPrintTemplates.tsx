@@ -106,19 +106,21 @@ function generatePrintHTML(
 
             return `<td style="padding:2px 3px;vertical-align:top;background:${bgColor};${bd}">
                 <div style="background:${sc.bg};border-radius:4px;padding:3px 4px;line-height:1.3">
+                    <span style="font-size:8px;font-weight:bold;color:#374151;display:block;margin-bottom:1px;white-space:normal;">${c.title || 'مطالبة'}</span>
                     ${c.status === 'PartiallyPaid' 
                         ? `<b style="font-size:10px;color:#1e3a5f;display:block;direction:ltr">${fmt(Number(c.amount))}</b><b style="font-size:8px;color:#059669;display:block">م: ${fmt(Number(c.paid_amount || 0))}</b>` 
                         : `<b style="font-size:10px;color:#1e3a5f;display:block;direction:ltr">${fmt(Number(c.amount))}</b>`
                     }
                     <span style="font-size:7px;color:${sc.text}">${sl}</span>
-                    <span style="font-size:7px;color:#6b7280;display:block">${fmtDate(c.due_date)}</span>${c.notes ? `<span style="font-size:7px;color:#9ca3af;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px" title="${c.notes}">📝${c.notes}</span>` : ''}
+                    <span style="font-size:7px;color:#6b7280;display:block">${fmtDate(c.due_date)}</span>
+                    ${c.notes ? `<span style="font-size:7.5px;color:#4b5563;display:block;white-space:normal;overflow-wrap:break-word;word-break:break-word;margin-top:3px;line-height:1.3;background:rgba(255,255,255,0.6);padding:2px;border-radius:2px;border-top:1px dashed rgba(0,0,0,0.1);">📝 ${c.notes}</span>` : ''}
                 </div>
             </td>`
         }).join('')
 
-        return `<tr style="border-bottom:2px solid #94a3b8">
+        return `<tr style="border-bottom:2px solid #94a3b8;page-break-inside:avoid;">
             <td style="padding:4px 6px;font-size:10px;font-weight:700;color:#1f2937;vertical-align:middle;background:${bgColor};border-left:3px solid #1e3a5f;${bd}">
-                ${p.name}<br><span style="font-size:8px;color:#9ca3af;font-weight:400">${p.client || ''}</span>
+                ${p.name}<br><span style="font-size:8px;color:#9ca3af;font-weight:400">${p.client || ''}${p.division ? ` | ${p.division}` : ''}</span>
             </td>
             <td style="padding:4px;text-align:center;font-size:10px;font-weight:700;color:#7c3aed;background:${bgColor};${bd}">${fmt(contractWithVat)}</td>
             <td style="padding:4px;text-align:center;font-size:10px;font-weight:700;color:#1e40af;background:${bgColor};${bd}">${fmt(projectClaimsTotal)}<br><span style="font-size:8px;color:#9ca3af;font-weight:400">${pClaims.length} مط</span></td>
