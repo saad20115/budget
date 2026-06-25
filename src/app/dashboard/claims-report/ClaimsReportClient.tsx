@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Project, ProjectClaim } from '@/lib/types'
 import { openPrintWindow } from './ClaimsPrintTemplates'
+import QuickAddProjectModal from './QuickAddProjectModal'
 
 interface Props {
     projects: Project[]
@@ -39,9 +40,15 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function ClaimsReportClient({ projects, claims }: Props) {
     const [search, setSearch] = useState('')
-    const [statusFilter, setStatusFilter] = useState<string>('all')
+    const [statusFilter, setStatusFilter] = useState<string[]>([])
     const [categoryFilter, setCategoryFilter] = useState<string>('all')
+    const [clientFilter, setClientFilter] = useState<string>('all')
     const [showArchived, setShowArchived] = useState<boolean>(false)
+    const [showQuickAdd, setShowQuickAdd] = useState<boolean>(false)
+
+    // Inline edit states
+    const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
+    const [projectEditForm, setProjectEditForm] = useState<{ category: string; client: string }>({ category: '', client: '' })
 
     const [editingClaimId, setEditingClaimId] = useState<string | null>(null)
     const [editForm, setEditForm] = useState<{ status: string; notes: string }>({ status: '', notes: '' })
@@ -111,6 +118,26 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
         }
     }
 
+    const handleSaveProject = async (projectId: string) => {
+        setIsSaving(true)
+        try {
+            const { error } = await supabase
+                .from('projects')
+                .update({ category: projectEditForm.category, client: projectEditForm.client })
+                .eq('id', projectId)
+            
+            if (error) throw error
+            
+            setEditingProjectId(null)
+            router.refresh()
+        } catch (error) {
+            console.error('Error updating project:', error)
+            alert('حدث خطأ أثناء حفظ التعديلات')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
     // Dual scrollbar refs  
     const topScrollRef = useRef<HTMLDivElement>(null)
     const tableScrollRef = useRef<HTMLDivElement>(null)
@@ -156,10 +183,15 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
         return map
     }, [claims])
 
-    // Categories
+    // Categories and Clients
     const categories = useMemo(() => {
         const cats = [...new Set(projects.map(p => p.category || 'غير محدد').filter(Boolean))]
         return cats.sort()
+    }, [projects])
+    
+    const clientsList = useMemo(() => {
+        const clients = [...new Set(projects.map(p => p.client).filter(Boolean))]
+        return clients.sort()
     }, [projects])
 
     // Filtered projects
@@ -168,14 +200,15 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
             if (!showArchived && p.is_archived) return false
             if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.client?.toLowerCase().includes(search.toLowerCase())) return false
             if (categoryFilter !== 'all' && (p.category || 'غير محدد') !== categoryFilter) return false
+            if (clientFilter !== 'all' && (p.client || 'غير محدد') !== clientFilter) return false
             // if status filter, keep projects that have at least one claim with that status
-            if (statusFilter !== 'all') {
+            if (statusFilter.length > 0) {
                 const pClaims = claimsByProject[p.id] ?? []
-                if (!pClaims.some(c => c.status === statusFilter)) return false
+                if (!pClaims.some(c => statusFilter.includes(c.status))) return false
             }
             return true
         })
-    }, [projects, search, statusFilter, categoryFilter, claimsByProject])
+    }, [projects, search, statusFilter, categoryFilter, clientFilter, claimsByProject, showArchived])
 
     // KPIs
     const kpis = useMemo(() => {
@@ -313,11 +346,16 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                 {ALL_STATUSES.map(s => {
                     const cfg = STATUS_CONFIG[s]
                     const count = claims.filter(c => c.status === s).length
+                    const isSelected = statusFilter.includes(s)
                     return (
                         <button
                             key={s}
-                            onClick={() => setStatusFilter(prev => prev === s ? 'all' : s)}
-                            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${statusFilter === s
+                            onClick={() => {
+                                setStatusFilter(prev => 
+                                    prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+                                )
+                            }}
+                            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${isSelected
                                 ? `${cfg.bg} ${cfg.text} ${cfg.border} ring-2 ring-offset-1 ring-current`
                                 : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
                                 }`}
@@ -327,8 +365,8 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                         </button>
                     )
                 })}
-                {statusFilter !== 'all' && (
-                    <button onClick={() => setStatusFilter('all')} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 underline">
+                {statusFilter.length > 0 && (
+                    <button onClick={() => setStatusFilter([])} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 underline">
                         مسح الفلتر
                     </button>
                 )}
@@ -336,6 +374,14 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
 
             {/* Filters Bar */}
             <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <button 
+                    onClick={() => setShowQuickAdd(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    إضافة مشروع ومطالبات
+                </button>
+
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 bg-gray-50 px-3 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors whitespace-nowrap">
                     <input
                         type="checkbox"
@@ -359,9 +405,18 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                     />
                 </div>
                 <select
+                    value={clientFilter}
+                    onChange={e => setClientFilter(e.target.value)}
+                    className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-400 text-gray-700 min-w-[150px]"
+                    title="فلتر الشركة"
+                >
+                    <option value="all">كل الشركات</option>
+                    {clientsList.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select
                     value={categoryFilter}
                     onChange={e => setCategoryFilter(e.target.value)}
-                    className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-400 text-gray-700 min-w-[180px]"
+                    className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-400 text-gray-700 min-w-[150px]"
                     title="فلتر التصنيف"
                 >
                     <option value="all">كل التصنيفات</option>
@@ -425,7 +480,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                 </tr>
                             ) : filteredProjects.map(project => {
                                 const pClaims = (claimsByProject[project.id] ?? [])
-                                    .filter(c => statusFilter === 'all' || c.status === statusFilter)
+                                    .filter(c => statusFilter.length === 0 || statusFilter.includes(c.status))
                                     .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
 
                                 const projectTotal = (claimsByProject[project.id] ?? []).reduce((s, c) => s + Number(c.amount), 0)
@@ -446,9 +501,45 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                                         </span>
                                                     )}
                                                 </div>
-                                                <p className="text-gray-400 text-xs mt-0.5 truncate max-w-[200px]">{project.client}</p>
-                                                {project.category && (
-                                                    <span className="text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full mt-1 inline-block">{project.category}</span>
+                                                
+                                                {editingProjectId === project.id ? (
+                                                    <div className="mt-2 space-y-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
+                                                        <input 
+                                                            type="text" 
+                                                            list="edit-clients-list"
+                                                            placeholder="الشركة/العميل..."
+                                                            value={projectEditForm.client}
+                                                            onChange={e => setProjectEditForm(prev => ({ ...prev, client: e.target.value }))}
+                                                            className="w-full text-xs p-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                        />
+                                                        <input 
+                                                            type="text" 
+                                                            list="edit-cats-list"
+                                                            placeholder="التصنيف..."
+                                                            value={projectEditForm.category}
+                                                            onChange={e => setProjectEditForm(prev => ({ ...prev, category: e.target.value }))}
+                                                            className="w-full text-xs p-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                        />
+                                                        <datalist id="edit-clients-list">{clientsList.map(c => <option key={c} value={c} />)}</datalist>
+                                                        <datalist id="edit-cats-list">{categories.map(c => <option key={c} value={c} />)}</datalist>
+                                                        <div className="flex gap-2 justify-end mt-1">
+                                                            <button onClick={() => setEditingProjectId(null)} className="px-2 py-1 text-[10px] font-medium text-gray-500 bg-white border border-gray-200 rounded hover:bg-gray-50">إلغاء</button>
+                                                            <button onClick={() => handleSaveProject(project.id)} disabled={isSaving} className="px-2 py-1 text-[10px] font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50">حفظ</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="group/edit inline-flex flex-col items-start cursor-pointer hover:bg-gray-50 p-1 -ml-1 rounded" onClick={() => {
+                                                        setProjectEditForm({ category: project.category || '', client: project.client || '' })
+                                                        setEditingProjectId(project.id)
+                                                    }} title="تعديل تفاصيل المشروع">
+                                                        <div className="flex items-center gap-1">
+                                                            <p className="text-gray-500 text-xs mt-0.5 truncate max-w-[180px]">{project.client}</p>
+                                                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover/edit:opacity-100 transition-opacity" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                                        </div>
+                                                        {project.category && (
+                                                            <span className="text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full mt-1 inline-block">{project.category}</span>
+                                                        )}
+                                                    </div>
                                                 )}
                                                 
                                                 <button
@@ -588,7 +679,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                         {/* Claims detail cells */}
                                         {pClaims.length === 0 ? (
                                             <td className="px-6 py-4 text-gray-300 text-xs text-center">
-                                                لا توجد مطالبات{statusFilter !== 'all' ? ` بحالة "${STATUS_CONFIG[statusFilter]?.label}"` : ''}
+                                                لا توجد مطالبات{statusFilter.length > 0 ? ' تطابق حالة الفلتر' : ''}
                                             </td>
                                         ) : pClaims.map(claim => {
                                             const cfg = STATUS_CONFIG[claim.status] ?? STATUS_CONFIG.Pending
@@ -717,6 +808,14 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                     </table>
                 </div>
             </div>
+            
+            <QuickAddProjectModal 
+                isOpen={showQuickAdd}
+                onClose={() => setShowQuickAdd(false)}
+                onSuccess={() => router.refresh()}
+                existingCategories={categories}
+                existingClients={clientsList}
+            />
         </div>
     )
 }
