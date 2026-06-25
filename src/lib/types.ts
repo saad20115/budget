@@ -14,6 +14,7 @@ export interface Project {
     duration_months: number
     paid_amount?: number
     qiraat_notes?: { text: string; color: string }
+    is_archived?: boolean
     created_at: string
 }
 

@@ -41,6 +41,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<string>('all')
     const [categoryFilter, setCategoryFilter] = useState<string>('all')
+    const [showArchived, setShowArchived] = useState<boolean>(false)
 
     const [editingClaimId, setEditingClaimId] = useState<string | null>(null)
     const [editForm, setEditForm] = useState<{ status: string; notes: string }>({ status: '', notes: '' })
@@ -85,6 +86,26 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
         } catch (error) {
             console.error('Error updating qiraat notes:', error)
             alert('حدث خطأ أثناء حفظ متعلقات قراءات')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const toggleArchiveProject = async (projectId: string, currentStatus: boolean) => {
+        if (!confirm(currentStatus ? 'هل أنت متأكد من تفعيل هذا المشروع مجدداً وإظهاره في التقرير؟' : 'هل أنت متأكد من إقفال هذا المشروع لإخفائه من التقرير الافتراضي؟')) return
+        
+        setIsSaving(true)
+        try {
+            const { error } = await supabase
+                .from('projects')
+                .update({ is_archived: !currentStatus })
+                .eq('id', projectId)
+            
+            if (error) throw error
+            router.refresh()
+        } catch (error) {
+            console.error('Error toggling archive status:', error)
+            alert('حدث خطأ أثناء تغيير حالة الأرشفة')
         } finally {
             setIsSaving(false)
         }
@@ -144,6 +165,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
     // Filtered projects
     const filteredProjects = useMemo(() => {
         return projects.filter(p => {
+            if (!showArchived && p.is_archived) return false
             if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.client?.toLowerCase().includes(search.toLowerCase())) return false
             if (categoryFilter !== 'all' && (p.category || 'غير محدد') !== categoryFilter) return false
             // if status filter, keep projects that have at least one claim with that status
