@@ -38,51 +38,7 @@ export default function ClaimsCalendarClient({ initialProjects }: ClaimsCalendar
 
             if (error) throw error
 
-            // Update statuses to Overdue if due_date passed and not paid
-            const today = new Date().toISOString().split('T')[0]
-            const toUpdateIds: { id: string, newStatus: string }[] = []
-
-            const updatedData = data.map(claim => {
-                if (claim.status === 'Paid') return claim
-                
-                const dueParts = claim.due_date.split('-');
-                const todayParts = today.split('-');
-                const d1 = new Date(Date.UTC(Number(dueParts[0]), Number(dueParts[1])-1, Number(dueParts[2])));
-                const d2 = new Date(Date.UTC(Number(todayParts[0]), Number(todayParts[1])-1, Number(todayParts[2])));
-                const diffDays = (d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24);
-                
-                let newStatus = claim.status;
-                if (diffDays >= 0 && diffDays <= 5) {
-                    newStatus = 'Due';
-                } else if (diffDays > 5) {
-                    newStatus = 'Overdue';
-                } else if (diffDays < 0 && (claim.status === 'Overdue' || claim.status === 'Due')) {
-                    newStatus = (claim.paid_amount || 0) > 0 ? 'PartiallyPaid' : 'Pending';
-                }
-
-                if (newStatus !== claim.status) {
-                    toUpdateIds.push({ id: claim.id, newStatus })
-                    return { ...claim, status: newStatus as any }
-                }
-                
-                return claim
-            })
-
-            setClaims(updatedData as ProjectClaim[])
-
-            // Background persist
-            if (toUpdateIds.length > 0) {
-                const statusGroups = toUpdateIds.reduce((acc, curr) => {
-                    if (!acc[curr.newStatus]) acc[curr.newStatus] = [];
-                    acc[curr.newStatus].push(curr.id);
-                    return acc;
-                }, {} as Record<string, string[]>);
-
-                const promises = Object.entries(statusGroups).map(([status, ids]) => 
-                    supabase.from('project_claims').update({ status }).in('id', ids)
-                );
-                Promise.all(promises).catch(err => console.error("Auto-sync claims error:", err))
-            }
+            setClaims(data as ProjectClaim[])
         } catch (error: any) {
             console.error('Error fetching claims:', error)
         } finally {
