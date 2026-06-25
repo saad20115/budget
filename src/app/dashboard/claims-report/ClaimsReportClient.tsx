@@ -423,15 +423,46 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                 const collRate = projectTotal > 0 ? (projectPaid / projectTotal) * 100 : 0
 
                                 return (
-                                    <tr key={project.id} className="hover:bg-gray-50/50 transition-colors group">
+                                    <tr key={project.id} className={`hover:bg-gray-50/50 transition-colors group ${project.is_archived ? 'opacity-60 bg-gray-50/30' : ''}`}>
                                         {/* Project Name */}
-                                        <td className="px-5 py-4 sticky right-0 bg-white group-hover:bg-gray-50/50 z-10 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] transition-colors">
-                                            <div>
-                                                <p className="font-bold text-gray-900 truncate max-w-[200px]" title={project.name}>{project.name}</p>
+                                        <td className={`px-5 py-4 sticky right-0 z-10 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] transition-colors ${project.is_archived ? 'bg-gray-50 group-hover:bg-gray-100' : 'bg-white group-hover:bg-gray-50/50'}`}>
+                                            <div className="relative group/proj">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-bold text-gray-900 truncate max-w-[200px]" title={project.name}>{project.name}</p>
+                                                    {project.is_archived && (
+                                                        <span className="inline-flex shrink-0 items-center gap-1 text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded border border-gray-300">
+                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                            مقفَل
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="text-gray-400 text-xs mt-0.5 truncate max-w-[200px]">{project.client}</p>
                                                 {project.category && (
                                                     <span className="text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full mt-1 inline-block">{project.category}</span>
                                                 )}
+                                                
+                                                <button
+                                                    onClick={() => toggleArchiveProject(project.id, !!project.is_archived)}
+                                                    disabled={isSaving}
+                                                    className={`absolute left-0 top-1/2 -translate-y-1/2 p-1.5 rounded-lg opacity-0 group-hover/proj:opacity-100 transition-all shadow-sm border text-xs flex items-center gap-1 disabled:opacity-50 ${
+                                                        project.is_archived 
+                                                        ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-200' 
+                                                        : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700 border-gray-200'
+                                                    }`}
+                                                    title={project.is_archived ? "إلغاء إقفال المشروع" : "إقفال المشروع (أرشفة)"}
+                                                >
+                                                    {project.is_archived ? (
+                                                        <>
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
+                                                            تفعيل
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                            إقفال
+                                                        </>
+                                                    )}
+                                                </button>
                                             </div>
                                         </td>
 
