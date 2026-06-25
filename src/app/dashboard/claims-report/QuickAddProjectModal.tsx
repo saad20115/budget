@@ -8,16 +8,17 @@ type Props = {
     onClose: () => void
     onSuccess: () => void
     existingCategories: string[]
-    existingClients: string[]
+    existingDivisions: string[]
 }
 
-export default function QuickAddProjectModal({ isOpen, onClose, onSuccess, existingCategories, existingClients }: Props) {
+export default function QuickAddProjectModal({ isOpen, onClose, onSuccess, existingCategories, existingDivisions }: Props) {
     const supabase = createClient()
     const [isSaving, setIsSaving] = useState(false)
     
     // Project form
     const [name, setName] = useState('')
     const [client, setClient] = useState('')
+    const [division, setDivision] = useState('')
     const [category, setCategory] = useState('')
     const [totalValue, setTotalValue] = useState('')
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0])
@@ -84,6 +85,7 @@ export default function QuickAddProjectModal({ isOpen, onClose, onSuccess, exist
                 user_id: user.id,
                 name,
                 client,
+                division: division || null,
                 category: category || null,
                 total_value: parseFloat(totalValue) || 0,
                 target_profit_margin: 0,
@@ -146,8 +148,12 @@ export default function QuickAddProjectModal({ isOpen, onClose, onSuccess, exist
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-1">الشركة / العميل *</label>
-                                <input required type="text" list="clients-list" value={client} onChange={e => setClient(e.target.value)} className="w-full text-sm p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-                                <datalist id="clients-list">{existingClients.map(c => <option key={c} value={c} />)}</datalist>
+                                <input required type="text" value={client} onChange={e => setClient(e.target.value)} className="w-full text-sm p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">القسم / الشركة التابعة (داخلي)</label>
+                                <input type="text" list="divisions-list" value={division} onChange={e => setDivision(e.target.value)} className="w-full text-sm p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                                <datalist id="divisions-list">{existingDivisions.map(d => <option key={d} value={d} />)}</datalist>
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-1">التصنيف</label>

@@ -1,3 +1,13 @@
+export interface Category {
+    id: string
+    name: string
+}
+
+export interface Division {
+    id: string
+    name: string
+}
+
 export type ProjectStatus = 'Active' | 'Completed' | 'On Hold'
 
 export interface Project {
@@ -9,6 +19,7 @@ export interface Project {
     target_profit_margin: number
     status: ProjectStatus
     category?: string
+    division?: string
     start_date?: string
     end_date?: string
     duration_months: number

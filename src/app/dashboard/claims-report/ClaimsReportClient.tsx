@@ -10,6 +10,8 @@ import QuickAddProjectModal from './QuickAddProjectModal'
 interface Props {
     projects: Project[]
     claims: ProjectClaim[]
+    dbCategories: string[]
+    dbDivisions: string[]
 }
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string; dot: string }> = {
@@ -38,17 +40,17 @@ function StatusBadge({ status }: { status: string }) {
     )
 }
 
-export default function ClaimsReportClient({ projects, claims }: Props) {
+export default function ClaimsReportClient({ projects, claims, dbCategories, dbDivisions }: Props) {
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<string[]>([])
     const [categoryFilter, setCategoryFilter] = useState<string>('all')
-    const [clientFilter, setClientFilter] = useState<string>('all')
+    const [divisionFilter, setDivisionFilter] = useState<string>('all')
     const [showArchived, setShowArchived] = useState<boolean>(false)
     const [showQuickAdd, setShowQuickAdd] = useState<boolean>(false)
 
     // Inline edit states
     const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
-    const [projectEditForm, setProjectEditForm] = useState<{ category: string; client: string }>({ category: '', client: '' })
+    const [projectEditForm, setProjectEditForm] = useState<{ category: string; division: string }>({ category: '', division: '' })
 
     const [editingClaimId, setEditingClaimId] = useState<string | null>(null)
     const [editForm, setEditForm] = useState<{ status: string; notes: string }>({ status: '', notes: '' })
@@ -57,6 +59,38 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
     const [isSaving, setIsSaving] = useState(false)
     const router = useRouter()
     const supabase = createClient()
+
+    const handleAddCategory = async () => {
+        const name = window.prompt('أدخل اسم التصنيف الجديد:')
+        if (!name?.trim()) return
+        
+        setIsSaving(true)
+        try {
+            const { error } = await supabase.from('categories').insert({ name: name.trim() })
+            if (error) throw error
+            router.refresh()
+        } catch (err: any) {
+            alert('خطأ أثناء الإضافة: ' + err.message)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const handleAddDivision = async () => {
+        const name = window.prompt('أدخل اسم القسم / الشركة التابعة الجديد:')
+        if (!name?.trim()) return
+        
+        setIsSaving(true)
+        try {
+            const { error } = await supabase.from('divisions').insert({ name: name.trim() })
+            if (error) throw error
+            router.refresh()
+        } catch (err: any) {
+            alert('خطأ أثناء الإضافة: ' + err.message)
+        } finally {
+            setIsSaving(false)
+        }
+    }
 
     const handleSaveClaim = async (claimId: string) => {
         setIsSaving(true)
@@ -123,7 +157,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
         try {
             const { error } = await supabase
                 .from('projects')
-                .update({ category: projectEditForm.category, client: projectEditForm.client })
+                .update({ category: projectEditForm.category, division: projectEditForm.division })
                 .eq('id', projectId)
             
             if (error) throw error
@@ -183,16 +217,16 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
         return map
     }, [claims])
 
-    // Categories and Clients
+    // Categories and Divisions
     const categories = useMemo(() => {
-        const cats = [...new Set(projects.map(p => p.category || 'غير محدد').filter(Boolean))]
+        const cats = [...new Set([...dbCategories, ...projects.map(p => p.category).filter(Boolean)])] as string[]
         return cats.sort()
-    }, [projects])
+    }, [projects, dbCategories])
     
-    const clientsList = useMemo(() => {
-        const clients = [...new Set(projects.map(p => p.client).filter(Boolean))]
-        return clients.sort()
-    }, [projects])
+    const divisionsList = useMemo(() => {
+        const divs = [...new Set([...dbDivisions, ...projects.map(p => p.division).filter(Boolean)])] as string[]
+        return divs.sort()
+    }, [projects, dbDivisions])
 
     // Filtered projects
     const filteredProjects = useMemo(() => {
@@ -200,7 +234,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
             if (!showArchived && p.is_archived) return false
             if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.client?.toLowerCase().includes(search.toLowerCase())) return false
             if (categoryFilter !== 'all' && (p.category || 'غير محدد') !== categoryFilter) return false
-            if (clientFilter !== 'all' && (p.client || 'غير محدد') !== clientFilter) return false
+            if (divisionFilter !== 'all' && (p.division || 'القسم غير محدد') !== divisionFilter) return false
             // if status filter, keep projects that have at least one claim with that status
             if (statusFilter.length > 0) {
                 const pClaims = claimsByProject[p.id] ?? []
@@ -208,7 +242,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
             }
             return true
         })
-    }, [projects, search, statusFilter, categoryFilter, clientFilter, claimsByProject, showArchived])
+    }, [projects, search, statusFilter, categoryFilter, divisionFilter, claimsByProject, showArchived])
 
     // KPIs
     const kpis = useMemo(() => {
@@ -404,24 +438,47 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                         className="w-full pr-9 pl-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-400 text-gray-900"
                     />
                 </div>
-                <select
-                    value={clientFilter}
-                    onChange={e => setClientFilter(e.target.value)}
-                    className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-400 text-gray-700 min-w-[150px]"
-                    title="فلتر الشركة"
-                >
-                    <option value="all">كل الشركات</option>
-                    {clientsList.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <select
-                    value={categoryFilter}
-                    onChange={e => setCategoryFilter(e.target.value)}
-                    className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-400 text-gray-700 min-w-[150px]"
-                    title="فلتر التصنيف"
-                >
-                    <option value="all">كل التصنيفات</option>
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                
+                {/* Division Filter */}
+                <div className="flex items-center gap-1">
+                    <select
+                        value={divisionFilter}
+                        onChange={e => setDivisionFilter(e.target.value)}
+                        className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-400 text-gray-700 min-w-[150px]"
+                        title="فلتر القسم / الشركة التابعة"
+                    >
+                        <option value="all">كل الأقسام/الشركات</option>
+                        {divisionsList.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <button 
+                        onClick={handleAddDivision}
+                        className="p-2.5 bg-gray-50 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-100 hover:text-blue-600 transition-colors"
+                        title="إضافة قسم جديد"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    </button>
+                </div>
+
+                {/* Category Filter */}
+                <div className="flex items-center gap-1">
+                    <select
+                        value={categoryFilter}
+                        onChange={e => setCategoryFilter(e.target.value)}
+                        className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-blue-400 text-gray-700 min-w-[150px]"
+                        title="فلتر التصنيف"
+                    >
+                        <option value="all">كل التصنيفات</option>
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <button 
+                        onClick={handleAddCategory}
+                        className="p-2.5 bg-gray-50 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-100 hover:text-blue-600 transition-colors"
+                        title="إضافة تصنيف جديد"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    </button>
+                </div>
+
                 <div className="text-xs text-gray-400 flex items-center px-2">
                     {filteredProjects.length} مشروع
                 </div>
@@ -506,10 +563,10 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                                     <div className="mt-2 space-y-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
                                                         <input 
                                                             type="text" 
-                                                            list="edit-clients-list"
-                                                            placeholder="الشركة/العميل..."
-                                                            value={projectEditForm.client}
-                                                            onChange={e => setProjectEditForm(prev => ({ ...prev, client: e.target.value }))}
+                                                            list="edit-divisions-list"
+                                                            placeholder="القسم / الشركة التابعة..."
+                                                            value={projectEditForm.division}
+                                                            onChange={e => setProjectEditForm(prev => ({ ...prev, division: e.target.value }))}
                                                             className="w-full text-xs p-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
                                                         />
                                                         <input 
@@ -520,7 +577,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                                             onChange={e => setProjectEditForm(prev => ({ ...prev, category: e.target.value }))}
                                                             className="w-full text-xs p-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
                                                         />
-                                                        <datalist id="edit-clients-list">{clientsList.map(c => <option key={c} value={c} />)}</datalist>
+                                                        <datalist id="edit-divisions-list">{divisionsList.map(c => <option key={c} value={c} />)}</datalist>
                                                         <datalist id="edit-cats-list">{categories.map(c => <option key={c} value={c} />)}</datalist>
                                                         <div className="flex gap-2 justify-end mt-1">
                                                             <button onClick={() => setEditingProjectId(null)} className="px-2 py-1 text-[10px] font-medium text-gray-500 bg-white border border-gray-200 rounded hover:bg-gray-50">إلغاء</button>
@@ -529,11 +586,11 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                                                     </div>
                                                 ) : (
                                                     <div className="group/edit inline-flex flex-col items-start cursor-pointer hover:bg-gray-50 p-1 -ml-1 rounded" onClick={() => {
-                                                        setProjectEditForm({ category: project.category || '', client: project.client || '' })
+                                                        setProjectEditForm({ category: project.category || '', division: project.division || '' })
                                                         setEditingProjectId(project.id)
                                                     }} title="تعديل تفاصيل المشروع">
                                                         <div className="flex items-center gap-1">
-                                                            <p className="text-gray-500 text-xs mt-0.5 truncate max-w-[180px]">{project.client}</p>
+                                                            <p className="text-gray-500 text-xs mt-0.5 truncate max-w-[180px]">{project.division || 'القسم غير محدد'}</p>
                                                             <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover/edit:opacity-100 transition-opacity" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                                         </div>
                                                         {project.category && (
@@ -814,7 +871,7 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
                 onClose={() => setShowQuickAdd(false)}
                 onSuccess={() => router.refresh()}
                 existingCategories={categories}
-                existingClients={clientsList}
+                existingDivisions={divisionsList}
             />
         </div>
     )

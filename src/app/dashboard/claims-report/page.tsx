@@ -11,22 +11,29 @@ export default async function ClaimsReportPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) redirect('/login')
 
-    const [{ data: projectsData }, { data: claimsData }] = await Promise.all([
-        supabase
-            .from('projects')
-            .select('*')
-            .order('total_value', { ascending: false }),
-        supabase
-            .from('project_claims')
-            .select('*')
-            .order('due_date', { ascending: true }),
+    const [
+        { data: projectsData }, 
+        { data: claimsData },
+        { data: categoriesData },
+        { data: divisionsData }
+    ] = await Promise.all([
+        supabase.from('projects').select('*').order('total_value', { ascending: false }),
+        supabase.from('project_claims').select('*').order('due_date', { ascending: true }),
+        supabase.from('categories').select('*').order('name'),
+        supabase.from('divisions').select('*').order('name')
     ])
 
     const projects: Project[] = projectsData ?? []
-    
     const claims: ProjectClaim[] = claimsData ?? []
+    const dbCategories = (categoriesData ?? []).map(c => c.name)
+    const dbDivisions = (divisionsData ?? []).map(d => d.name)
 
     return (
-        <ClaimsReportClient projects={projects} claims={claims} />
+        <ClaimsReportClient 
+            projects={projects} 
+            claims={claims} 
+            dbCategories={dbCategories}
+            dbDivisions={dbDivisions}
+        />
     )
 }
