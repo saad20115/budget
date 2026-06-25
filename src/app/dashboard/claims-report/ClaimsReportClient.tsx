@@ -335,8 +335,18 @@ export default function ClaimsReportClient({ projects, claims }: Props) {
             </div>
 
             {/* Filters Bar */}
-            <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 bg-gray-50 px-3 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors whitespace-nowrap">
+                    <input
+                        type="checkbox"
+                        checked={showArchived}
+                        onChange={(e) => setShowArchived(e.target.checked)}
+                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                    />
+                    عرض المشاريع المقفلة
+                </label>
+                
+                <div className="relative flex-1 w-full">
                     <svg className="absolute top-1/2 -translate-y-1/2 right-3 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
                     </svg>
