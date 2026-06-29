@@ -303,6 +303,14 @@ export default function ClaimsReportClient({ projects, claims, dbCategories, dbD
                             الشامل
                         </button>
                         <button
+                            onClick={() => openPrintWindow(projects.filter(p => !p.is_archived), claims, 'active')}
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
+                            title="طباعة التقرير الشامل للمشاريع النشطة (يستبعد المقفلة)"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
+                            الشامل للنشط
+                        </button>
+                        <button
                             onClick={() => openPrintWindow(projects, claims, 'overdue')}
                             className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
                             title="طباعة المطالبات المتأخرة"

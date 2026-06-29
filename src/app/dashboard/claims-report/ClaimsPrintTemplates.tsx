@@ -2,10 +2,11 @@
 
 import { Project, ProjectClaim } from '@/lib/types'
 
-type ReportType = 'all' | 'overdue' | 'notYetDue'
+type ReportType = 'all' | 'active' | 'overdue' | 'notYetDue'
 
 const REPORT_TITLES: Record<ReportType, string> = {
     all: 'التقرير الشامل للمطالبات',
+    active: 'تقرير المطالبات (المشاريع النشطة)',
     overdue: 'تقرير المطالبات المتأخرة',
     notYetDue: 'تقرير المطالبات التي لم يحن وقتها',
 }
@@ -48,17 +49,17 @@ function generatePrintHTML(
     const title = REPORT_TITLES[reportType]
     const today = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
-    // Filter claims by type
-    let filteredClaims = [...claims]
-    if (reportType === 'overdue') {
-        filteredClaims = claims.filter(c => c.status === 'Overdue')
-    } else if (reportType === 'notYetDue') {
-        filteredClaims = claims.filter(c => c.status === 'NotYetDue')
-    }
-
-    // Build project map & claims by project
+    // Build project map
     const projectMap: Record<string, Project> = {}
     projects.forEach(p => { projectMap[p.id] = p })
+
+    // Filter claims by project and type
+    let filteredClaims = claims.filter(c => projectMap[c.project_id])
+    if (reportType === 'overdue') {
+        filteredClaims = filteredClaims.filter(c => c.status === 'Overdue')
+    } else if (reportType === 'notYetDue') {
+        filteredClaims = filteredClaims.filter(c => c.status === 'NotYetDue')
+    }
 
     const claimsByProject: Record<string, ProjectClaim[]> = {}
     filteredClaims.forEach(c => {
